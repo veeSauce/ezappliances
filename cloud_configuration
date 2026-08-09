@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # 1. POSTGRESQL DATABASE SERVICE
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: ezappliances_db
+    restart: always
+    environment:
+      POSTGRES_USER: ez_admin
+      POSTGRES_PASSWORD: SuperSecurePassword2026!
+      POSTGRES_DB: ezappliances
+    ports:
+      - "5432:5432"
+    volumes:
+      # Native persistent volume maps to avoid data drops when updating containers
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ez_network
+
+  # 2. NODE.JS WEB APP SERVICE
+  web_app:
+    build: .
+    container_name: ezappliances_app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - STRIPE_SECRET_KEY=sk_test_51...
+      - STRIPE_WEBHOOK_SECRET=whsec_...
+      # Point internal connection directly to the named database service block above
+      - DATABASE_URL=postgresql://ez_admin:SuperSecurePassword2026!@postgres_db:5432/ezappliances
+    depends_on:
+      - postgres_db
+    networks:
+      - ez_network
+
+volumes:
+  postgres_data:
+
+networks:
+  ez_network:
+    driver: bridge
