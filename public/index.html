@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EZ Appliances — Washer &amp; Dryer Rentals, Delivered</title>
+<meta name="description" content="Rent a washer and dryer with next-day delivery, full installation, and service included. No long contracts, month-to-month plans.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container header-bar">
+    <a href="/" class="logo">EZ<span>·</span>Appliances</a>
+    <ul class="nav-links">
+      <li><a href="#booking">Order Now</a></li>
+      <li><a href="#how">How It Works</a></li>
+      <li><a href="/pay-bill.html">Pay My Bill</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="tel:8005551234" class="nav-phone">(800) 555-1234</a>
+      <a href="#booking" class="btn btn-primary">Order Now</a>
+    </div>
+    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" id="navToggle">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container hero-grid">
+    <div class="hero-copy">
+      <span class="eyebrow">Serving Dallas – Fort Worth</span>
+      <h1>Your washer and dryer, delivered and running by tomorrow.</h1>
+      <p class="lede">No purchase, no repair bills, no long contract. Pick a plan, we deliver, install, and keep it running for as long as you rent.</p>
+      <div class="hero-actions">
+        <a href="#booking" class="btn btn-amber">Start My Order</a>
+        <a href="/pay-bill.html" class="btn btn-outline">Pay My Bill</a>
+      </div>
+    </div>
+    <div class="rating-plate" role="img" aria-label="Service summary: model EZ-Lease, serving Dallas-Fort Worth, available this week, rates from $34 per month">
+      <span class="rivet-tl"></span><span class="rivet-br"></span>
+      <div class="plate-heading">Service Plate — Unit Spec</div>
+      <div class="plate-rows">
+        <div class="plate-row"><span class="plate-label">MODEL</span><span class="plate-value">EZ-LEASE</span></div>
+        <div class="plate-row"><span class="plate-label">SERVES</span><span class="plate-value">DALLAS – FORT WORTH</span></div>
+        <div class="plate-row"><span class="plate-label">STATUS</span><span class="plate-value"><span class="status-dot"></span>AVAILABLE THIS WEEK</span></div>
+        <div class="plate-row"><span class="plate-label">DELIVERY</span><span class="plate-value">NEXT-DAY</span></div>
+        <div class="plate-row"><span class="plate-label">RATE</span><span class="plate-value">FROM $34 / MO</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="benefits">
+  <div class="container benefits-grid">
+    <div class="benefit-tag">
+      <span class="tag-code">§ DELIVERY</span>
+      <h3>Next-Day Delivery</h3>
+      <p>Order today, laundry running tomorrow — installed and tested before we leave.</p>
+    </div>
+    <div class="benefit-tag">
+      <span class="tag-code">§ SERVICE</span>
+      <h3>Service Included</h3>
+      <p>Breakdown, part, or repair — it's covered for as long as you're renting. No separate bill.</p>
+    </div>
+    <div class="benefit-tag">
+      <span class="tag-code">§ TERMS</span>
+      <h3>No Long Contracts</h3>
+      <p>Month-to-month. Cancel or swap your unit any time your needs change.</p>
+    </div>
+  </div>
+</section>
+
+<section class="how" id="how">
+  <div class="container">
+    <div class="how-head">
+      <span class="eyebrow">The process</span>
+      <h2>Three steps between now and laundry day.</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="step-number">01 — CHOOSE</span>
+        <h3>Pick your appliance</h3>
+        <p>Washer, dryer, a matched set, or a stacked unit for tighter spaces.</p>
+      </div>
+      <div class="step">
+        <span class="step-number">02 — SCHEDULE</span>
+        <h3>Set a delivery window</h3>
+        <p>Tell us your address and a day that works — most orders land next-day.</p>
+      </div>
+      <div class="step">
+        <span class="step-number">03 — INSTALL</span>
+        <h3>We hook it up, you're done</h3>
+        <p>Full installation and a test cycle before our technician leaves your home.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="booking" id="booking">
+  <div class="container booking-grid">
+    <div class="booking-copy">
+      <span class="eyebrow">Start your order</span>
+      <h2>Tell us what you need.</h2>
+      <p>Fill this out and a member of our team will confirm your delivery window within one business day.</p>
+      <ul>
+        <li>No credit check to get a quote</li>
+        <li>Delivery, install, and first-time setup included</li>
+        <li>Cancel or swap your unit any time</li>
+      </ul>
+    </div>
+
+    <form class="form-card" id="orderForm" novalidate>
+      <div class="form-row">
+        <label for="fullName">Full name</label>
+        <input type="text" id="fullName" name="fullName" autocomplete="name" required>
+      </div>
+      <div class="form-row form-row-split">
+        <div>
+          <label for="phone">Phone number</label>
+          <input type="tel" id="phone" name="phone" autocomplete="tel" required>
+        </div>
+        <div>
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" autocomplete="email" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <label for="address">Delivery address</label>
+        <input type="text" id="address" name="address" autocomplete="street-address" required>
+      </div>
+      <div class="form-row form-row-split">
+        <div>
+          <label for="applianceType">Appliance type</label>
+          <select id="applianceType" name="applianceType" required>
+            <option value="" disabled selected>Select one</option>
+            <option value="washer">Washer only</option>
+            <option value="dryer">Dryer only</option>
+            <option value="washer_dryer_pair">Washer + dryer set</option>
+            <option value="stacked_dryer">Stacked unit</option>
+          </select>
+        </div>
+        <div>
+          <label for="deliveryDate">Preferred delivery date</label>
+          <input type="date" id="deliveryDate" name="deliveryDate" required>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-amber" style="width:100%;">Request My Delivery</button>
+      <p class="form-note">By submitting, you agree to be contacted about your order. No payment is collected here.</p>
+      <p class="form-status" id="orderStatus" role="status"></p>
+    </form>
+  </div>
+</section>
+
+<section class="testimonials">
+  <div class="container">
+    <span class="eyebrow">Placeholder reviews — swap in real ones</span>
+    <h2>What renters in DFW are saying</h2>
+    <div class="testi-grid">
+      <div class="testi-card">
+        <p>"Ordered on a Tuesday, had a working washer by Wednesday afternoon. Didn't expect it to be that fast."</p>
+        <div class="testi-name">— Sample review, Plano</div>
+      </div>
+      <div class="testi-card">
+        <p>"Our dryer started acting up after a few months and they sent someone out with no extra charge."</p>
+        <div class="testi-name">— Sample review, Fort Worth</div>
+      </div>
+      <div class="testi-card">
+        <p>"Liked that I could cancel any time — didn't want to be locked into a year-long thing for an apartment."</p>
+        <div class="testi-name">— Sample review, Arlington</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="/" class="logo">EZ·Appliances</a>
+        <p>Washer and dryer rentals for Dallas–Fort Worth. Delivered, installed, and serviced for one monthly rate.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#how">How It Works</a></li>
+          <li><a href="#booking">Order Now</a></li>
+          <li><a href="/pay-bill.html">Pay My Bill</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Contact</h4>
+        <ul>
+          <li><a href="tel:8005551234">(800) 555-1234</a></li>
+          <li><a href="mailto:hello@ezappliances.com">hello@ezappliances.com</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 EZ Appliances. All rights reserved.</span>
+      <span>Dallas–Fort Worth, TX</span>
+    </div>
+  </div>
+</footer>
+
+<script src="/js/main.js"></script>
+</body>
+</html>

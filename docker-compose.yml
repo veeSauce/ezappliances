@@ -13,8 +13,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      # Native persistent volume maps to avoid data drops when updating containers
       - postgres_data:/var/lib/postgresql/data
+      # Auto-run schema.sql on first container start
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     networks:
       - ez_network
 
