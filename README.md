@@ -13,17 +13,17 @@ ezappliances/
 │   └── js/main.js
 ├── src/
 │   ├── app.js            # Express app: mounts static files + all routes
-│   ├── config/
-│   │   └── firebase.js   # Firebase Admin SDK init
 │   ├── db/
 │   │   └── pool.js       # Shared Postgres connection pool
+│   ├── lib/
+│   │   └── adminAuth.js  # PBKDF2 hashing and token helpers
 │   ├── middleware/
 │   │   └── requireAdmin.js
 │   └── routes/
 │       ├── webhook.js    # Stripe webhook (subscriptions/invoices)
 │       ├── orders.js     # POST /api/orders — booking form
 │       ├── account.js    # POST /api/account/lookup — pay-bill form
-│       └── admin.js      # GET /api/admin/customers — admin only
+│       └── admin.js      # Admin login + protected admin routes
 ├── db/
 │   └── schema.sql        # Postgres schema (auto-run by docker-compose)
 ├── server.js              # Entry point — loads .env, starts the app

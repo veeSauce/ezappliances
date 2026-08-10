@@ -1,6 +1,6 @@
 -- 1. USERS TABLE (Handles Identity Mapping)
 CREATE TABLE users (
-    id TEXT PRIMARY KEY,                       -- Unique ID (Firebase Auth UID or Google ID)
+    id TEXT PRIMARY KEY,                       -- Unique system user identifier
     name TEXT NOT NULL,
     email TEXT UNIQUE,
     phone_number TEXT UNIQUE,
@@ -10,7 +10,27 @@ CREATE TABLE users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. EQUIPMENT TABLE (Tracks physical appliances)
+-- 2. ADMIN AUTH TABLES (Simple Postgres-backed access control)
+CREATE TABLE admin_users (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    salt TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE admin_sessions (
+    id SERIAL PRIMARY KEY,
+    admin_user_id INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. EQUIPMENT TABLE (Tracks physical appliances)
 CREATE TABLE equipment (
     id SERIAL PRIMARY KEY,
     serial_number TEXT UNIQUE NOT NULL,

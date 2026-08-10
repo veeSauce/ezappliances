@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Login — EZ Appliances</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="/css/styles.css">
+  <style>
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #eef0ee;
+    }
+    .login-card {
+      width: min(440px, calc(100vw - 32px));
+      background: #fbfcfb;
+      border: 1px solid rgba(27,35,32,0.14);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(27,35,32,0.08);
+      padding: 32px;
+    }
+    .login-card h1 {
+      margin-bottom: 8px;
+    }
+    .login-card p {
+      margin-bottom: 20px;
+    }
+    .auth-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 18px;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <span class="eyebrow">Admin access</span>
+    <h1>Sign in</h1>
+    <p>Use your EZ Appliances admin account to view customer records.</p>
+
+    <form id="adminLoginForm" novalidate>
+      <div class="form-row">
+        <label for="adminUsername">Username or email</label>
+        <input id="adminUsername" name="username" type="text" autocomplete="username" required />
+      </div>
+
+      <div class="form-row">
+        <label for="adminPassword">Password</label>
+        <input id="adminPassword" name="password" type="password" autocomplete="current-password" required />
+      </div>
+
+      <div class="auth-actions">
+        <button type="submit" class="btn btn-amber">Log in</button>
+      </div>
+
+      <p class="form-status" id="adminLoginStatus" role="status"></p>
+    </form>
+  </div>
+
+  <script src="/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — EZ Appliances</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="/css/styles.css">
+  <style>
+    .admin-shell {
+      max-width: 1120px;
+      margin: 48px auto 96px;
+      padding: 0 24px;
+    }
+    .admin-topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .customers-table-wrap {
+      background: #fbfcfb;
+      border: 1px solid rgba(27,35,32,0.14);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      text-align: left;
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(27,35,32,0.14);
+      vertical-align: top;
+    }
+    th {
+      background: #eef0ee;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #46565F;
+    }
+    .muted {
+      color: #4B5652;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <div class="admin-topbar">
+      <div>
+        <span class="eyebrow">Admin dashboard</span>
+        <h1>Customer records</h1>
+      </div>
+
+      <button id="adminLogoutButton" class="btn btn-outline" type="button">Log out</button>
+    </div>
+
+    <p class="form-status" id="adminStatus" role="status"></p>
+
+    <div class="customers-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Address</th>
+            <th>Phone</th>
+            <th>Units</th>
+            <th>Installation</th>
+            <th>Billing start</th>
+          </tr>
+        </thead>
+        <tbody id="adminCustomersTableBody">
+          <tr>
+            <td colspan="6" class="muted">Loading customers…</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/js/main.js"></script>
+</body>
+</html>
