@@ -78,11 +78,20 @@ if (lookupForm) {
         body: JSON.stringify(data),
       });
 
-      if (!res.ok) throw new Error('Not found');
+      const responseData = await res.json();
+
+      if (!res.ok) {
+        throw new Error(responseData.error || 'Not found');
+      }
+
+      if (responseData.checkoutUrl) {
+        window.location.href = responseData.checkoutUrl;
+        return;
+      }
 
       setStatus(statusEl, 'Account found — redirecting you to payment...', 'success');
     } catch (err) {
-      setStatus(statusEl, "We couldn't find an account matching that information.", 'error');
+      setStatus(statusEl, err.message || "We couldn't find an account matching that information.", 'error');
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Find My Account';
