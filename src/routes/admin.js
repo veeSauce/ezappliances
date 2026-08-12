@@ -3,6 +3,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const requireAdmin = require('../middleware/requireAdmin');
 const { hashPassword, hashToken, verifyPassword } = require('../lib/adminAuth');
+const { sanitizePayload, sanitizeEmail, sanitizeName } = require('../lib/inputSafety');
 
 const router = express.Router();
 
@@ -11,7 +12,10 @@ const router = express.Router();
  * Validates an admin user against the admin_users table and returns a DB-backed bearer token.
  */
 router.post('/api/admin/login', express.json(), async (req, res) => {
-    const { username, email, password } = req.body;
+    const payload = sanitizePayload(req.body || {});
+    const username = sanitizeName(payload.username || '');
+    const email = sanitizeEmail(payload.email || '');
+    const password = String(payload.password || '').trim();
     const loginValue = username || email;
 
     if (!loginValue || !password) {
@@ -19,6 +23,14 @@ router.post('/api/admin/login', express.json(), async (req, res) => {
             success: false,
             error: 'Username or email and password are required.'
         });
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ success: false, error: 'Invalid email format.' });
+    }
+
+    if (username && !/^[A-Za-z0-9\s'\-.]{2,}$/.test(username)) {
+        return res.status(400).json({ success: false, error: 'Username contains invalid characters.' });
     }
 
     try {

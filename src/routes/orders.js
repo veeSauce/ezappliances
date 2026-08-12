@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
+const { sanitizePayload, sanitizeName, sanitizeEmail, sanitizePhone, sanitizeAddress } = require('../lib/inputSafety');
 
 const router = express.Router();
 
@@ -13,16 +14,27 @@ const router = express.Router();
  * rental_agreements and kick off the Stripe subscription/checkout flow.
  */
 router.post('/api/orders', express.json(), async (req, res) => {
-    const { fullName, phone, email, address, applianceType, deliveryDate } = req.body;
+    const payload = sanitizePayload(req.body || {});
+    const fullName = sanitizeName(payload.fullName || payload.name || '');
+    const phone = sanitizePhone(payload.phone || '');
+    const email = sanitizeEmail(payload.email || '');
+    const address = sanitizeAddress(payload.address || '');
+    const applianceType = normalizeValue(payload.applianceType || payload.appliance_type || '');
+    const deliveryDate = normalizeValue(payload.deliveryDate || payload.delivery_date || '');
 
     if (!fullName || !phone || !email || !address || !applianceType) {
-        return res.status(400).json({ success: false, error: 'Missing required fields.' });
+        return res.status(400).json({ success: false, error: 'Missing required fields or invalid values.' });
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ success: false, error: 'Invalid email format.' });
+    }
+
+    if (!/^[A-Za-z0-9\s'\-.]{2,}$/.test(fullName)) {
+        return res.status(400).json({ success: false, error: 'Name contains invalid characters.' });
     }
 
     try {
-        // Upsert a lightweight user record so staff can find this request later.
-        // A real account (with stripe_customer_id, role, etc.) still gets created
-        // properly during the staff-review step — this just captures the lead.
         await pool.query(`
             INSERT INTO users (id, name, email, phone_number, address)
             VALUES ($1, $2, $3, $4, $5)
@@ -40,5 +52,9 @@ router.post('/api/orders', express.json(), async (req, res) => {
         return res.status(500).json({ success: false, error: 'Could not save your request. Please call us instead.' });
     }
 });
+
+function normalizeValue(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ');
+}
 
 module.exports = router;

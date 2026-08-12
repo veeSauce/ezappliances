@@ -1,6 +1,7 @@
 const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const pool = require('../db/pool');
+const { sanitizePayload, sanitizeEmail, sanitizePhone, sanitizeAddress, sanitizeName } = require('../lib/inputSafety');
 
 const router = express.Router();
 
@@ -13,10 +14,22 @@ const router = express.Router();
  * the session URL so the browser can redirect the customer to checkout.
  */
 router.post('/api/account/lookup', express.json(), async (req, res) => {
-    const { email, phone, zip, amount } = req.body;
+    const payload = sanitizePayload(req.body || {});
+    const email = sanitizeEmail(payload.email || '');
+    const phone = sanitizePhone(payload.phone || '');
+    const zip = String(payload.zip || '').replace(/\D/g, '').slice(0, 10);
+    const amount = Number(payload.amount || 2500);
 
     if (!zip || (!email && !phone)) {
         return res.status(400).json({ success: false, error: 'Zip code and either an email or phone number are required.' });
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ success: false, error: 'Invalid email format.' });
+    }
+
+    if (phone && phone.length < 10) {
+        return res.status(400).json({ success: false, error: 'Invalid phone number format.' });
     }
 
     try {
@@ -34,6 +47,7 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
 
         const user = result.rows[0];
         const paymentAmount = Number(amount) > 0 ? Number(amount) : 2500;
+        const safeName = sanitizeName(user.name || 'customer account');
 
         if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.startsWith('sk_test_replace_with_real_key')) {
             return res.status(500).json({ success: false, error: 'Stripe checkout is not configured yet.' });
@@ -45,7 +59,7 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
                 price_data: {
                     currency: 'usd',
                     product_data: {
-                        name: `EZ Appliances payment for ${user.name || 'customer account'}`
+                        name: `EZ Appliances payment for ${safeName || 'customer account'}`
                     },
                     unit_amount: paymentAmount
                 },

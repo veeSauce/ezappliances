@@ -15,6 +15,74 @@ function setStatus(el, message, kind) {
   el.classList.add('visible', kind);
 }
 
+function normalizeValue(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).trim().replace(/\s+/g, ' ');
+}
+
+function sanitizeName(value) {
+  const clean = normalizeValue(value).replace(/[^a-zA-Z0-9\s'\-.]/g, ' ');
+  return clean.replace(/\s+/g, ' ').trim();
+}
+
+function sanitizeEmail(value) {
+  const clean = normalizeValue(value).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+    return '';
+  }
+  return clean;
+}
+
+function sanitizePhone(value) {
+  return normalizeValue(value).replace(/\D/g, '');
+}
+
+function sanitizeAddress(value) {
+  return normalizeValue(value).replace(/[^a-zA-Z0-9\s,.-/#]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function sanitizePayload(payload) {
+  const sanitized = { ...payload };
+
+  Object.keys(sanitized).forEach((key) => {
+    const rawValue = sanitized[key];
+    if (typeof rawValue !== 'string') return;
+
+    if (key.toLowerCase().includes('email')) {
+      sanitized[key] = sanitizeEmail(rawValue);
+    } else if (key.toLowerCase().includes('phone')) {
+      sanitized[key] = sanitizePhone(rawValue);
+    } else if (key.toLowerCase().includes('name')) {
+      sanitized[key] = sanitizeName(rawValue);
+    } else if (key.toLowerCase().includes('address') || key.toLowerCase().includes('street')) {
+      sanitized[key] = sanitizeAddress(rawValue);
+    } else if (key.toLowerCase().includes('zip')) {
+      sanitized[key] = normalizeValue(rawValue).replace(/\D/g, '').slice(0, 10);
+    } else {
+      sanitized[key] = normalizeValue(rawValue);
+    }
+  });
+
+  return sanitized;
+}
+
+function validateEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function validateName(value) {
+  const cleaned = sanitizeName(value);
+  return cleaned.length >= 2 && !/[!@#$%^&*_=+\[\]{};:"<>?/|\\~`]/.test(cleaned);
+}
+
+function validatePhone(value) {
+  return sanitizePhone(value).length >= 10;
+}
+
+function validateAddress(value) {
+  return sanitizeAddress(value).length >= 6;
+}
+
 // ---- Order form (homepage #booking) ----
 // NOTE: POSTs to /api/orders, which does not exist on the backend yet.
 // This needs a matching Express route (see server.js) that validates the
@@ -26,7 +94,33 @@ if (orderForm) {
     e.preventDefault();
     const statusEl = document.getElementById('orderStatus');
     const submitBtn = orderForm.querySelector('button[type="submit"]');
-    const payload = Object.fromEntries(new FormData(orderForm).entries());
+    const rawPayload = Object.fromEntries(new FormData(orderForm).entries());
+    const payload = sanitizePayload(rawPayload);
+
+    if (!validateName(payload.fullName)) {
+      setStatus(statusEl, 'Please enter a valid full name without symbols.', 'error');
+      return;
+    }
+
+    if (!validatePhone(payload.phone)) {
+      setStatus(statusEl, 'Please enter a valid phone number.', 'error');
+      return;
+    }
+
+    if (!validateEmail(payload.email)) {
+      setStatus(statusEl, 'Please enter a valid email address.', 'error');
+      return;
+    }
+
+    if (!validateAddress(payload.address)) {
+      setStatus(statusEl, 'Please enter a valid delivery address.', 'error');
+      return;
+    }
+
+    if (!payload.applianceType) {
+      setStatus(statusEl, 'Please select an appliance type.', 'error');
+      return;
+    }
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
@@ -61,10 +155,26 @@ if (lookupForm) {
     e.preventDefault();
     const statusEl = document.getElementById('lookupStatus');
     const submitBtn = lookupForm.querySelector('button[type="submit"]');
-    const data = Object.fromEntries(new FormData(lookupForm).entries());
+    const rawData = Object.fromEntries(new FormData(lookupForm).entries());
+    const data = sanitizePayload(rawData);
 
     if (!data.email && !data.phone) {
       setStatus(statusEl, 'Enter either an email address or a phone number.', 'error');
+      return;
+    }
+
+    if (data.email && !validateEmail(data.email)) {
+      setStatus(statusEl, 'Please enter a valid email address.', 'error');
+      return;
+    }
+
+    if (data.phone && !validatePhone(data.phone)) {
+      setStatus(statusEl, 'Please enter a valid phone number.', 'error');
+      return;
+    }
+
+    if (!data.zip || !/^[0-9]{5}$/.test(data.zip)) {
+      setStatus(statusEl, 'Please enter a valid 5-digit billing zip code.', 'error');
       return;
     }
 
@@ -119,7 +229,23 @@ if (adminLoginForm) {
 
     const statusEl = document.getElementById('adminLoginStatus');
     const submitBtn = adminLoginForm.querySelector('button[type="submit"]');
-    const payload = Object.fromEntries(new FormData(adminLoginForm).entries());
+    const rawPayload = Object.fromEntries(new FormData(adminLoginForm).entries());
+    const payload = sanitizePayload(rawPayload);
+
+    if ((!payload.username && !payload.email) || !payload.password) {
+      setAuthStatus(statusEl, 'Username or email and password are required.', 'error');
+      return;
+    }
+
+    if (payload.username && !sanitizeName(payload.username).length) {
+      setAuthStatus(statusEl, 'Please enter a valid username.', 'error');
+      return;
+    }
+
+    if (payload.email && !validateEmail(payload.email)) {
+      setAuthStatus(statusEl, 'Please enter a valid email address.', 'error');
+      return;
+    }
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Logging in...';
