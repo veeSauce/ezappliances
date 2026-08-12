@@ -215,6 +215,27 @@ function getAdminToken() {
   return localStorage.getItem(ADMIN_TOKEN_KEY) || '';
 }
 
+function clearAdminSession() {
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+function redirectToAdminLogin(message) {
+  const target = '/admin-login.html';
+
+  if (message && typeof window !== 'undefined') {
+    sessionStorage.setItem('adminLoginMessage', message);
+  }
+
+  window.location.href = target;
+}
+
+function showSessionWarning(message) {
+  const banner = document.getElementById('sessionWarning');
+  if (!banner) return;
+  banner.textContent = message;
+  banner.classList.add('visible');
+}
+
 function setAuthStatus(el, message, kind) {
   if (!el) return;
   el.textContent = message;
@@ -283,7 +304,7 @@ if (adminCustomersTableBody) {
   const token = getAdminToken();
 
   if (!token) {
-    window.location.href = '/admin-login.html';
+    redirectToAdminLogin('Your session expired. Please log in again.');
   } else {
     fetch('/api/admin/customers', {
       headers: {
@@ -292,9 +313,16 @@ if (adminCustomersTableBody) {
       }
     })
       .then(async (res) => {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
+          if (res.status === 401 || res.status === 403 || /expired|invalid|missing|malformed/i.test(data.error || '')) {
+            const message = 'Your session expired. Please log in again.';
+            showSessionWarning(message);
+            clearAdminSession();
+            setTimeout(() => redirectToAdminLogin(message), 1200);
+            return;
+          }
           throw new Error(data.error || 'Access denied.');
         }
 
@@ -319,6 +347,14 @@ if (adminCustomersTableBody) {
         `).join('');
       })
       .catch((err) => {
+        if (/expired|invalid|401|403|session/i.test(err.message || '')) {
+          const message = 'Your session expired. Please log in again.';
+          showSessionWarning(message);
+          clearAdminSession();
+          setTimeout(() => redirectToAdminLogin(message), 1200);
+          return;
+        }
+
         setAuthStatus(adminStatus, err.message || 'Unable to load customers.', 'error');
         adminCustomersTableBody.innerHTML = `
           <tr>
@@ -334,8 +370,8 @@ if (adminLogoutButton) {
     const token = getAdminToken();
 
     if (!token) {
-      localStorage.removeItem(ADMIN_TOKEN_KEY);
-      window.location.href = '/admin-login.html';
+      clearAdminSession();
+      redirectToAdminLogin('Please log in to continue.');
       return;
     }
 
@@ -350,13 +386,23 @@ if (adminLogoutButton) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (res.status === 401 || res.status === 403 || /expired|invalid|missing|malformed/i.test(data.error || '')) {
+          const message = 'Your session expired. Please log in again.';
+          showSessionWarning(message);
+          clearAdminSession();
+          setTimeout(() => redirectToAdminLogin(message), 1200);
+          return;
+        }
         throw new Error(data.error || 'Logout failed.');
       }
 
-      localStorage.removeItem(ADMIN_TOKEN_KEY);
-      window.location.href = '/admin-login.html';
+      clearAdminSession();
+      redirectToAdminLogin('Logged out successfully.');
     } catch (err) {
-      setAuthStatus(adminStatus, err.message || 'Unable to log out.', 'error');
+      const message = err.message || 'Your session expired. Please log in again.';
+      showSessionWarning(message);
+      clearAdminSession();
+      setTimeout(() => redirectToAdminLogin(message), 1200);
     }
   });
 }

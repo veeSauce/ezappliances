@@ -25,6 +25,20 @@
       border-radius: 8px;
       overflow: hidden;
     }
+    .session-warning {
+      display: none;
+      margin: 0 0 18px;
+      padding: 12px 14px;
+      border-radius: 6px;
+      border: 1px solid rgba(178, 59, 59, 0.2);
+      background: rgba(178, 59, 59, 0.08);
+      color: #7a1c1c;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .session-warning.visible {
+      display: block;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -59,6 +73,7 @@
       <button id="adminLogoutButton" class="btn btn-outline" type="button">Log out</button>
     </div>
 
+    <div id="sessionWarning" class="session-warning" role="alert" aria-live="polite"></div>
     <p class="form-status" id="adminStatus" role="status"></p>
 
     <div class="customers-table-wrap">

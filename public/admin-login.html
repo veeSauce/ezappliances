@@ -33,11 +33,26 @@
       margin-top: 18px;
       align-items: center;
     }
+    .session-banner {
+      display: none;
+      margin: 0 0 18px;
+      padding: 12px 14px;
+      border-radius: 6px;
+      border: 1px solid rgba(178, 59, 59, 0.2);
+      background: rgba(178, 59, 59, 0.08);
+      color: #7a1c1c;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .session-banner.visible {
+      display: block;
+    }
   </style>
 </head>
 <body>
   <div class="login-card">
     <span class="eyebrow">Admin access</span>
+    <div id="sessionBanner" class="session-banner" role="alert" aria-live="polite"></div>
     <h1>Sign in</h1>
     <p>Use your EZ Appliances admin account to view customer records.</p>
 
@@ -60,6 +75,22 @@
     </form>
   </div>
 
+  <script>
+    const message = sessionStorage.getItem('adminLoginMessage');
+    if (message) {
+      const banner = document.getElementById('sessionBanner');
+      const statusEl = document.getElementById('adminLoginStatus');
+      if (banner) {
+        banner.textContent = message;
+        banner.classList.add('visible');
+      }
+      if (statusEl) {
+        statusEl.textContent = message;
+        statusEl.classList.add('visible', 'error');
+      }
+      sessionStorage.removeItem('adminLoginMessage');
+    }
+  </script>
   <script src="/js/main.js"></script>
 </body>
 </html>
