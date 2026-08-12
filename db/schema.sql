@@ -6,6 +6,7 @@ CREATE TABLE users (
     phone_number TEXT UNIQUE,
     address TEXT NOT NULL,
     role TEXT DEFAULT 'customer' CHECK(role IN ('customer', 'admin')),
+    monthly_rate NUMERIC(10, 2) NOT NULL DEFAULT 0,
     stripe_customer_id TEXT UNIQUE,            -- Linked Stripe customer token
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

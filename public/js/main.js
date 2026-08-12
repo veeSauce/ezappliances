@@ -318,6 +318,10 @@ function formatDate(value) {
   return value ? new Date(value).toLocaleDateString() : '—';
 }
 
+function formatMoney(value) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
+}
+
 async function adminFetch(path, options = {}) {
   const token = getAdminToken();
   const res = await fetch(path, {
@@ -344,20 +348,20 @@ async function loadCustomers() {
   try {
     const data = await adminFetch('/api/admin/customers');
     if (!data.customers?.length) {
-      adminCustomersTableBody.innerHTML = '<tr><td colspan="7" class="muted">No customers found.</td></tr>';
+      adminCustomersTableBody.innerHTML = '<tr><td colspan="8" class="muted">No customers found.</td></tr>';
       return;
     }
     adminCustomersTableBody.innerHTML = data.customers.map((customer) => `
       <tr>
         <td><a href="/admin-customer.html?id=${encodeURIComponent(customer.user_id)}">${escapeHtml(customer.name || '—')}</a></td>
         <td>${escapeHtml(customer.address || '—')}</td><td>${escapeHtml(customer.phone_number || '—')}</td>
-        <td>${escapeHtml(customer.held_units || 'No Unit Assigned')}</td><td>${escapeHtml(customer.installation_status || '—')}</td>
+        <td>${escapeHtml(customer.held_units || 'No Unit Assigned')}</td><td>${formatMoney(customer.monthly_rate)}${Number(customer.monthly_rate) === 49.99 ? ' + tax' : ''}</td><td>${escapeHtml(customer.installation_status || '—')}</td>
         <td>${formatDate(customer.billing_start_date)}</td>
         <td class="${customer.past_due ? 'past-due' : ''}">${customer.past_due ? 'Past due' : 'No'}</td>
       </tr>`).join('');
   } catch (err) {
     handleAdminError(err);
-    adminCustomersTableBody.innerHTML = '<tr><td colspan="7" class="muted">Unable to load customer data.</td></tr>';
+    adminCustomersTableBody.innerHTML = '<tr><td colspan="8" class="muted">Unable to load customer data.</td></tr>';
   }
 }
 
@@ -456,13 +460,12 @@ async function loadCustomerDetail() {
     const { customer, assignments, availableEquipment } = data;
     customerDetail.innerHTML = `
       <section class="customer-card"><span class="eyebrow">Customer details</span><h1>${escapeHtml(customer.name)}</h1>
-        <div class="customer-meta"><div><strong>Email</strong>${escapeHtml(customer.email || '—')}</div><div><strong>Phone</strong>${escapeHtml(customer.phone_number || '—')}</div><div><strong>Address</strong>${escapeHtml(customer.address || '—')}</div><div><strong>Past due</strong><span class="${customer.past_due ? 'past-due' : ''}">${customer.past_due ? 'Past due' : 'No'}</span></div></div>
+        <div class="customer-meta"><div><strong>Email</strong>${escapeHtml(customer.email || '—')}</div><div><strong>Phone</strong>${escapeHtml(customer.phone_number || '—')}</div><div><strong>Address</strong>${escapeHtml(customer.address || '—')}</div><div><strong>Monthly rate</strong>${formatMoney(customer.monthly_rate)}${assignments.length === 2 ? ' + applicable tax' : ''}</div><div><strong>Past due</strong><span class="${customer.past_due ? 'past-due' : ''}">${customer.past_due ? 'Past due' : 'No'}</span></div></div>
       </section>
       <section><h2>Assigned appliances</h2>${assignments.length ? assignments.map(assignmentForm).join('') : '<p class="muted">No appliances assigned.</p>'}</section>
       <section class="customer-card"><h2>Assign appliance</h2>
         ${availableEquipment.length ? `<form id="assignApplianceForm"><div class="assignment-fields">
           <label>Available appliance<select name="equipmentId" required>${availableEquipment.map((unit) => `<option value="${unit.id}">${escapeHtml(unit.type)} · ${escapeHtml(unit.model_name)} (${escapeHtml(unit.serial_number)})</option>`).join('')}</select></label>
-          <label>Monthly rate<input name="monthlyRate" type="number" min="0.01" step="0.01" required></label>
           <label>Installation status<select name="installationStatus"><option value="pending">pending</option><option value="scheduled">scheduled</option><option value="completed">completed</option></select></label>
           <label>Install date<input name="installationDate" type="date"></label><label>Billing start date<input name="billingStartDate" type="date"></label>
         </div><div class="assignment-actions"><button class="btn btn-amber" type="submit">Assign appliance</button></div></form>` : '<p class="muted">No unassigned appliances are available.</p>'}

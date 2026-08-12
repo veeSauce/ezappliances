@@ -108,6 +108,7 @@ router.get('/api/admin/customers', requireAdmin, async (req, res) => {
             u.name,
             u.address,
             u.phone_number,
+            u.monthly_rate,
             COALESCE(STRING_AGG(e.type, ', '), 'No Unit Assigned') AS held_units,
             ra.installation_status,
             ra.billing_start_date,
@@ -139,7 +140,7 @@ router.get('/api/admin/customers', requireAdmin, async (req, res) => {
         paramCounter++;
     }
 
-    queryText += ` GROUP BY u.id, ra.installation_status, ra.billing_start_date ORDER BY u.name ASC;`;
+    queryText += ` GROUP BY u.id, u.monthly_rate, ra.installation_status, ra.billing_start_date ORDER BY u.name ASC;`;
 
     try {
         const result = await pool.query(queryText, queryParams);
@@ -204,7 +205,7 @@ router.post('/api/admin/inventory', requireAdmin, express.json(), async (req, re
 router.get('/api/admin/customers/:customerId', requireAdmin, async (req, res) => {
     try {
         const customer = await pool.query(`
-            SELECT id, name, email, address, phone_number, FALSE AS past_due
+            SELECT id, name, email, address, phone_number, monthly_rate, FALSE AS past_due
             FROM users WHERE id = $1 AND role = 'customer'
         `, [req.params.customerId]);
         if (customer.rows.length === 0) {
@@ -244,22 +245,24 @@ router.get('/api/admin/customers/:customerId', requireAdmin, async (req, res) =>
 
 router.post('/api/admin/customers/:customerId/assignments', requireAdmin, express.json(), async (req, res) => {
     const { equipmentId, installationStatus = 'pending', installationDate = null, billingStartDate = null } = req.body || {};
-    const monthlyRate = Number(req.body && req.body.monthlyRate);
     const allowedStatuses = new Set(['pending', 'scheduled', 'completed']);
 
-    if (!Number.isInteger(Number(equipmentId)) || monthlyRate <= 0 || !allowedStatuses.has(installationStatus)) {
-        return res.status(400).json({ success: false, error: 'Choose an available appliance, a valid installation status, and a monthly rate.' });
+    if (!Number.isInteger(Number(equipmentId)) || !allowedStatuses.has(installationStatus)) {
+        return res.status(400).json({ success: false, error: 'Choose an available appliance and a valid installation status.' });
     }
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const customer = await client.query('SELECT id FROM users WHERE id = $1 AND role = \'customer\'', [req.params.customerId]);
+        const customer = await client.query('SELECT id FROM users WHERE id = $1 AND role = \'customer\' FOR UPDATE', [req.params.customerId]);
         const equipment = await client.query('SELECT id FROM equipment WHERE id = $1 FOR UPDATE', [equipmentId]);
         const alreadyAssigned = await client.query('SELECT id FROM rental_agreements WHERE equipment_id = $1', [equipmentId]);
         if (customer.rows.length === 0) throw new Error('CUSTOMER_NOT_FOUND');
         if (equipment.rows.length === 0) throw new Error('EQUIPMENT_NOT_FOUND');
         if (alreadyAssigned.rows.length > 0) throw new Error('EQUIPMENT_ASSIGNED');
+        const assignedCount = await client.query('SELECT COUNT(*)::int AS count FROM rental_agreements WHERE user_id = $1', [req.params.customerId]);
+        if (assignedCount.rows[0].count >= 2) throw new Error('MAXIMUM_ASSIGNMENTS');
+        const monthlyRate = assignedCount.rows[0].count === 0 ? 29.99 : 49.99;
 
         await client.query(`
             INSERT INTO rental_agreements
@@ -267,13 +270,15 @@ router.post('/api/admin/customers/:customerId/assignments', requireAdmin, expres
             VALUES ($1, $2, $3, $4, $5, $6)
         `, [req.params.customerId, equipmentId, monthlyRate, installationStatus, installationDate || null, billingStartDate || null]);
         await client.query("UPDATE equipment SET status = 'rented' WHERE id = $1", [equipmentId]);
+        await client.query('UPDATE users SET monthly_rate = $1 WHERE id = $2', [monthlyRate, req.params.customerId]);
         await client.query('COMMIT');
         return res.status(201).json({ success: true });
     } catch (err) {
         await client.query('ROLLBACK');
         const errors = {
             CUSTOMER_NOT_FOUND: 'Customer not found.', EQUIPMENT_NOT_FOUND: 'Appliance not found.',
-            EQUIPMENT_ASSIGNED: 'This appliance is already assigned.'
+            EQUIPMENT_ASSIGNED: 'This appliance is already assigned.',
+            MAXIMUM_ASSIGNMENTS: 'A customer may have a maximum of two appliances.'
         };
         if (errors[err.message]) return res.status(409).json({ success: false, error: errors[err.message] });
         console.error('❌ Admin assignment creation failed:', err.message);
@@ -311,6 +316,9 @@ router.delete('/api/admin/customers/:customerId/assignments/:assignmentId', requ
         `, [req.params.assignmentId, req.params.customerId]);
         if (assignment.rows.length === 0) throw new Error('ASSIGNMENT_NOT_FOUND');
         await client.query("UPDATE equipment SET status = 'available' WHERE id = $1", [assignment.rows[0].equipment_id]);
+        const remaining = await client.query('SELECT COUNT(*)::int AS count FROM rental_agreements WHERE user_id = $1', [req.params.customerId]);
+        const monthlyRate = remaining.rows[0].count === 0 ? 0 : remaining.rows[0].count === 1 ? 29.99 : 49.99;
+        await client.query('UPDATE users SET monthly_rate = $1 WHERE id = $2', [monthlyRate, req.params.customerId]);
         await client.query('COMMIT');
         return res.json({ success: true });
     } catch (err) {

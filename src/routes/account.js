@@ -1,7 +1,7 @@
 const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const pool = require('../db/pool');
-const { sanitizePayload, sanitizeEmail, sanitizePhone, sanitizeAddress, sanitizeName } = require('../lib/inputSafety');
+const { sanitizePayload, sanitizeEmail, sanitizePhone, sanitizeName } = require('../lib/inputSafety');
 
 const router = express.Router();
 
@@ -18,7 +18,6 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
     const email = sanitizeEmail(payload.email || '');
     const phone = sanitizePhone(payload.phone || '');
     const zip = String(payload.zip || '').replace(/\D/g, '').slice(0, 10);
-    const amount = Number(payload.amount || 2500);
 
     if (!zip || (!email && !phone)) {
         return res.status(400).json({ success: false, error: 'Zip code and either an email or phone number are required.' });
@@ -34,7 +33,7 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
 
     try {
         const result = await pool.query(`
-            SELECT id, email, phone_number, name, address, stripe_customer_id
+            SELECT id, email, phone_number, name, address, stripe_customer_id, monthly_rate
             FROM users
             WHERE address ILIKE $1
               AND (email = $2 OR phone_number = $3)
@@ -46,8 +45,14 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
         }
 
         const user = result.rows[0];
-        const paymentAmount = Number(amount) > 0 ? Number(amount) : 2500;
+        // The customer billing record is the sole source of truth for charges.
+        // Never accept an amount from the browser for a payment session.
+        const paymentAmount = Math.round(Number(user.monthly_rate) * 100);
         const safeName = sanitizeName(user.name || 'customer account');
+
+        if (!Number.isSafeInteger(paymentAmount) || paymentAmount <= 0) {
+            return res.status(400).json({ success: false, error: 'There is no active monthly billing rate for this account.' });
+        }
 
         if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY.startsWith('sk_test_replace_with_real_key')) {
             return res.status(500).json({ success: false, error: 'Stripe checkout is not configured yet.' });
@@ -59,7 +64,7 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
                 price_data: {
                     currency: 'usd',
                     product_data: {
-                        name: `EZ Appliances payment for ${safeName || 'customer account'}`
+                        name: `EZ Appliances monthly rental for ${safeName || 'customer account'}`
                     },
                     unit_amount: paymentAmount
                 },
@@ -70,6 +75,7 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
             customer_email: user.email || email || undefined,
             metadata: {
                 user_id: user.id,
+                monthly_rate_cents: String(paymentAmount),
                 zip,
                 phone: user.phone_number || phone || ''
             }
@@ -82,8 +88,10 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
                 id: user.id,
                 name: user.name,
                 email: user.email,
-                phone_number: user.phone_number
-            }
+                phone_number: user.phone_number,
+                monthly_rate: Number(user.monthly_rate)
+            },
+            amount: paymentAmount
         });
     } catch (err) {
         console.error('❌ Account lookup / checkout failed:', err.message);
