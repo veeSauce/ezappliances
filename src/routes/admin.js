@@ -110,7 +110,8 @@ router.get('/api/admin/customers', requireAdmin, async (req, res) => {
             u.phone_number,
             COALESCE(STRING_AGG(e.type, ', '), 'No Unit Assigned') AS held_units,
             ra.installation_status,
-            ra.billing_start_date
+            ra.billing_start_date,
+            FALSE AS past_due
         FROM users u
         LEFT JOIN rental_agreements ra ON u.id = ra.user_id
         LEFT JOIN equipment e ON ra.equipment_id = e.id
@@ -153,6 +154,172 @@ router.get('/api/admin/customers', requireAdmin, async (req, res) => {
             success: false,
             error: 'Internal Server Error processing administration query request.'
         });
+    }
+});
+
+router.get('/api/admin/inventory', requireAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT e.id, e.serial_number, e.model_name, e.type, e.status,
+                   u.id AS customer_id, u.name AS customer_name
+            FROM equipment e
+            LEFT JOIN rental_agreements ra ON ra.equipment_id = e.id
+            LEFT JOIN users u ON u.id = ra.user_id AND u.role = 'customer'
+            ORDER BY e.type, e.model_name, e.serial_number
+        `);
+        return res.json({ success: true, inventory: result.rows });
+    } catch (err) {
+        console.error('❌ Admin inventory query failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to load inventory.' });
+    }
+});
+
+router.post('/api/admin/inventory', requireAdmin, express.json(), async (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const type = typeof body.type === 'string' ? body.type : '';
+    const serialNumber = typeof body.serialNumber === 'string' ? body.serialNumber.trim() : '';
+    const make = typeof body.make === 'string' ? body.make.trim() : '';
+    const allowedTypes = new Set(['washer', 'dryer', 'stacked_dryer']);
+
+    if (!allowedTypes.has(type) || !serialNumber || !make) {
+        return res.status(400).json({ success: false, error: 'Unit type, serial number, and make are required.' });
+    }
+
+    try {
+        const result = await pool.query(`
+            INSERT INTO equipment (serial_number, model_name, type, status)
+            VALUES ($1, $2, $3, 'available')
+            RETURNING id, serial_number, model_name, type, status
+        `, [serialNumber, make, type]);
+        return res.status(201).json({ success: true, appliance: result.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(409).json({ success: false, error: 'An appliance with that serial number already exists.' });
+        }
+        console.error('❌ Admin inventory creation failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to add appliance.' });
+    }
+});
+
+router.get('/api/admin/customers/:customerId', requireAdmin, async (req, res) => {
+    try {
+        const customer = await pool.query(`
+            SELECT id, name, email, address, phone_number, FALSE AS past_due
+            FROM users WHERE id = $1 AND role = 'customer'
+        `, [req.params.customerId]);
+        if (customer.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Customer not found.' });
+        }
+
+        const [assignments, availableEquipment] = await Promise.all([
+            pool.query(`
+                SELECT ra.id, ra.equipment_id, ra.monthly_rate, ra.installation_status, ra.installation_date,
+                       ra.billing_start_date, ra.created_at, e.serial_number, e.model_name, e.type
+                FROM rental_agreements ra
+                INNER JOIN equipment e ON e.id = ra.equipment_id
+                WHERE ra.user_id = $1
+                ORDER BY e.type, e.model_name
+            `, [req.params.customerId]),
+            pool.query(`
+                SELECT e.id, e.serial_number, e.model_name, e.type
+                FROM equipment e
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM rental_agreements ra WHERE ra.equipment_id = e.id
+                )
+                ORDER BY e.type, e.model_name, e.serial_number
+            `)
+        ]);
+
+        return res.json({
+            success: true,
+            customer: customer.rows[0],
+            assignments: assignments.rows,
+            availableEquipment: availableEquipment.rows
+        });
+    } catch (err) {
+        console.error('❌ Admin customer detail query failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to load customer details.' });
+    }
+});
+
+router.post('/api/admin/customers/:customerId/assignments', requireAdmin, express.json(), async (req, res) => {
+    const { equipmentId, installationStatus = 'pending', installationDate = null, billingStartDate = null } = req.body || {};
+    const monthlyRate = Number(req.body && req.body.monthlyRate);
+    const allowedStatuses = new Set(['pending', 'scheduled', 'completed']);
+
+    if (!Number.isInteger(Number(equipmentId)) || monthlyRate <= 0 || !allowedStatuses.has(installationStatus)) {
+        return res.status(400).json({ success: false, error: 'Choose an available appliance, a valid installation status, and a monthly rate.' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const customer = await client.query('SELECT id FROM users WHERE id = $1 AND role = \'customer\'', [req.params.customerId]);
+        const equipment = await client.query('SELECT id FROM equipment WHERE id = $1 FOR UPDATE', [equipmentId]);
+        const alreadyAssigned = await client.query('SELECT id FROM rental_agreements WHERE equipment_id = $1', [equipmentId]);
+        if (customer.rows.length === 0) throw new Error('CUSTOMER_NOT_FOUND');
+        if (equipment.rows.length === 0) throw new Error('EQUIPMENT_NOT_FOUND');
+        if (alreadyAssigned.rows.length > 0) throw new Error('EQUIPMENT_ASSIGNED');
+
+        await client.query(`
+            INSERT INTO rental_agreements
+                (user_id, equipment_id, monthly_rate, installation_status, installation_date, billing_start_date)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `, [req.params.customerId, equipmentId, monthlyRate, installationStatus, installationDate || null, billingStartDate || null]);
+        await client.query("UPDATE equipment SET status = 'rented' WHERE id = $1", [equipmentId]);
+        await client.query('COMMIT');
+        return res.status(201).json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        const errors = {
+            CUSTOMER_NOT_FOUND: 'Customer not found.', EQUIPMENT_NOT_FOUND: 'Appliance not found.',
+            EQUIPMENT_ASSIGNED: 'This appliance is already assigned.'
+        };
+        if (errors[err.message]) return res.status(409).json({ success: false, error: errors[err.message] });
+        console.error('❌ Admin assignment creation failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to assign appliance.' });
+    } finally {
+        client.release();
+    }
+});
+
+router.patch('/api/admin/customers/:customerId/assignments/:assignmentId', requireAdmin, express.json(), async (req, res) => {
+    const { installationStatus, installationDate = null, billingStartDate = null } = req.body || {};
+    if (!['pending', 'scheduled', 'completed'].includes(installationStatus)) {
+        return res.status(400).json({ success: false, error: 'Invalid installation status.' });
+    }
+    try {
+        const result = await pool.query(`
+            UPDATE rental_agreements
+            SET installation_status = $1, installation_date = $2, billing_start_date = $3
+            WHERE id = $4 AND user_id = $5
+        `, [installationStatus, installationDate || null, billingStartDate || null, req.params.assignmentId, req.params.customerId]);
+        if (result.rowCount === 0) return res.status(404).json({ success: false, error: 'Assignment not found.' });
+        return res.json({ success: true });
+    } catch (err) {
+        console.error('❌ Admin assignment update failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to update assignment.' });
+    }
+});
+
+router.delete('/api/admin/customers/:customerId/assignments/:assignmentId', requireAdmin, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const assignment = await client.query(`
+            DELETE FROM rental_agreements WHERE id = $1 AND user_id = $2 RETURNING equipment_id
+        `, [req.params.assignmentId, req.params.customerId]);
+        if (assignment.rows.length === 0) throw new Error('ASSIGNMENT_NOT_FOUND');
+        await client.query("UPDATE equipment SET status = 'available' WHERE id = $1", [assignment.rows[0].equipment_id]);
+        await client.query('COMMIT');
+        return res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.message === 'ASSIGNMENT_NOT_FOUND') return res.status(404).json({ success: false, error: 'Assignment not found.' });
+        console.error('❌ Admin assignment removal failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to unassign appliance.' });
+    } finally {
+        client.release();
     }
 });
 

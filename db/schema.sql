@@ -59,6 +59,7 @@ CREATE TABLE rental_agreements (
     monthly_rate NUMERIC(10, 2) NOT NULL,      -- Exact decimal precision for financial math
     installation_fee NUMERIC(10, 2) DEFAULT 35.00,
     installation_status TEXT DEFAULT 'pending' CHECK(installation_status IN ('pending', 'scheduled', 'completed')),
+    installation_date DATE,
     billing_start_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
