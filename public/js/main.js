@@ -251,14 +251,21 @@ if (adminLoginForm) {
     const statusEl = document.getElementById('adminLoginStatus');
     const submitBtn = adminLoginForm.querySelector('button[type="submit"]');
     const rawPayload = Object.fromEntries(new FormData(adminLoginForm).entries());
-    const payload = sanitizePayload(rawPayload);
+    const loginValue = String(rawPayload.username || '').trim();
+    const loginIsEmail = validateEmail(loginValue);
+    const payload = {
+      username: loginIsEmail ? '' : loginValue,
+      email: loginIsEmail ? loginValue : '',
+      // Passwords must be sent unchanged; spaces can be valid password characters.
+      password: String(rawPayload.password || ''),
+    };
 
     if ((!payload.username && !payload.email) || !payload.password) {
       setAuthStatus(statusEl, 'Username or email and password are required.', 'error');
       return;
     }
 
-    if (payload.username && !sanitizeName(payload.username).length) {
+    if (payload.username && !/^[A-Za-z0-9\s'\-.]{2,}$/.test(payload.username)) {
       setAuthStatus(statusEl, 'Please enter a valid username.', 'error');
       return;
     }

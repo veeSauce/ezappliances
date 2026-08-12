@@ -3,7 +3,6 @@ const express = require('express');
 const pool = require('../db/pool');
 const requireAdmin = require('../middleware/requireAdmin');
 const { hashPassword, hashToken, verifyPassword } = require('../lib/adminAuth');
-const { sanitizePayload, sanitizeEmail, sanitizeName } = require('../lib/inputSafety');
 
 const router = express.Router();
 
@@ -12,11 +11,14 @@ const router = express.Router();
  * Validates an admin user against the admin_users table and returns a DB-backed bearer token.
  */
 router.post('/api/admin/login', express.json(), async (req, res) => {
-    const payload = sanitizePayload(req.body || {});
-    const username = sanitizeName(payload.username || '');
-    const email = sanitizeEmail(payload.email || '');
-    const password = String(payload.password || '').trim();
-    const loginValue = username || email;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const rawUsername = typeof body.username === 'string' ? body.username : '';
+    const rawEmail = typeof body.email === 'string' ? body.email : '';
+    const loginValue = (rawEmail || rawUsername).trim();
+    const isEmailLogin = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginValue);
+    // Credentials must be validated, never sanitized: changing an identifier
+    // or password before verification can make correct credentials fail.
+    const password = typeof body.password === 'string' ? body.password : '';
 
     if (!loginValue || !password) {
         return res.status(400).json({
@@ -25,11 +27,7 @@ router.post('/api/admin/login', express.json(), async (req, res) => {
         });
     }
 
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return res.status(400).json({ success: false, error: 'Invalid email format.' });
-    }
-
-    if (username && !/^[A-Za-z0-9\s'\-.]{2,}$/.test(username)) {
+    if (!isEmailLogin && !/^[A-Za-z0-9\s'\-.]{2,}$/.test(loginValue)) {
         return res.status(400).json({ success: false, error: 'Username contains invalid characters.' });
     }
 
@@ -38,7 +36,7 @@ router.post('/api/admin/login', express.json(), async (req, res) => {
             SELECT id, username, email, password_hash, salt, is_active
             FROM admin_users
             WHERE is_active = TRUE
-              AND (username = $1 OR email = $1)
+              AND (username = $1 OR LOWER(email) = LOWER($1))
         `, [loginValue]);
 
         if (result.rows.length === 0) {
