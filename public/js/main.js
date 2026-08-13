@@ -147,8 +147,7 @@ if (orderForm) {
 
 // ---- Account lookup form (pay-bill.html) ----
 // NOTE: POSTs to /api/account/lookup, which does not exist on the backend
-// yet either. Needs a route that looks up users by email OR phone + zip
-// and returns enough info to route the customer to a payment step.
+// Looks up users by email, or by phone number plus a billing ZIP code.
 const lookupForm = document.getElementById('lookupForm');
 if (lookupForm) {
   lookupForm.addEventListener('submit', async (e) => {
@@ -168,13 +167,13 @@ if (lookupForm) {
       return;
     }
 
-    if (data.phone && !validatePhone(data.phone)) {
+    if (!data.email && data.phone && !validatePhone(data.phone)) {
       setStatus(statusEl, 'Please enter a valid phone number.', 'error');
       return;
     }
 
-    if (!data.zip || !/^[0-9]{5}$/.test(data.zip)) {
-      setStatus(statusEl, 'Please enter a valid 5-digit billing zip code.', 'error');
+    if (!data.email && (!data.zip || !/^[0-9]{5}$/.test(data.zip))) {
+      setStatus(statusEl, 'Please enter a valid 5-digit billing zip code with your phone number.', 'error');
       return;
     }
 

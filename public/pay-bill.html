@@ -34,7 +34,7 @@
     <div class="lookup-card">
       <span class="eyebrow">Pay without logging in</span>
       <h1>Find your account</h1>
-      <p class="lede">Enter your email or phone number, plus your billing zip code, and we'll pull up your account.</p>
+      <p class="lede">Enter your email address, or your phone number with billing zip code, and we'll pull up your account.</p>
 
       <form id="lookupForm" novalidate>
         <div class="form-row">
@@ -50,8 +50,8 @@
         </div>
 
         <div class="form-row">
-          <label for="lookupZip">Billing zip code</label>
-          <input type="text" id="lookupZip" name="zip" inputmode="numeric" pattern="[0-9]{5}" required>
+          <label for="lookupZip">Billing zip code <span class="muted">(required with phone)</span></label>
+          <input type="text" id="lookupZip" name="zip" inputmode="numeric" pattern="[0-9]{5}">
         </div>
 
         <button type="submit" class="btn btn-amber" style="width:100%;">Find My Account</button>
