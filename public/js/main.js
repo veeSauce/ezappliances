@@ -208,13 +208,16 @@ if (lookupForm) {
   });
 }
 
+const serviceAccountForm = document.getElementById('serviceAccountForm');
 const serviceRequestForm = document.getElementById('serviceRequestForm');
-if (serviceRequestForm) {
-  serviceRequestForm.addEventListener('submit', async (event) => {
+let serviceAccountData = null;
+
+if (serviceAccountForm) {
+  serviceAccountForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const statusEl = document.getElementById('serviceRequestStatus');
-    const submitBtn = serviceRequestForm.querySelector('button[type="submit"]');
-    const data = sanitizePayload(Object.fromEntries(new FormData(serviceRequestForm).entries()));
+    const statusEl = document.getElementById('serviceAccountStatus');
+    const submitBtn = serviceAccountForm.querySelector('button[type="submit"]');
+    const data = sanitizePayload(Object.fromEntries(new FormData(serviceAccountForm).entries()));
 
     if (!data.email && !data.phone) {
       setStatus(statusEl, 'Enter an email address, or a phone number with billing ZIP code.', 'error');
@@ -228,16 +231,53 @@ if (serviceRequestForm) {
       setStatus(statusEl, 'Enter a valid phone number and 5-digit billing ZIP code.', 'error');
       return;
     }
-    if (!data.description || data.description.length < 5) {
-      setStatus(statusEl, 'Please provide a short description of the equipment issue.', 'error');
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Finding account...';
+    try {
+      const res = await fetch('/api/service-requests/lookup', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+      });
+      const responseData = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(responseData.error || 'Unable to find account.');
+      serviceAccountData = data;
+      const options = document.getElementById('serviceEquipmentOptions');
+      options.innerHTML = responseData.equipment.map((unit) => `
+        <label><input type="checkbox" name="equipmentIds" value="${escapeHtml(unit.id)}"> ${escapeHtml(unit.type)} · ${escapeHtml(unit.model_name)} (${escapeHtml(unit.serial_number)})</label>
+      `).join('');
+      serviceAccountForm.hidden = true;
+      serviceRequestForm.hidden = false;
+      serviceRequestForm.querySelector('input').focus();
+    } catch (err) {
+      setStatus(statusEl, err.message || 'Unable to find account. Please call us instead.', 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Find my account';
+    }
+  });
+}
+
+if (serviceRequestForm) {
+  serviceRequestForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const statusEl = document.getElementById('serviceRequestStatus');
+    const submitBtn = serviceRequestForm.querySelector('button[type="submit"]');
+    const equipmentIds = [...serviceRequestForm.querySelectorAll('input[name="equipmentIds"]:checked')].map((input) => Number(input.value));
+    const issueType = serviceRequestForm.querySelector('input[name="issueType"]:checked')?.value;
+    if (!equipmentIds.length) {
+      setStatus(statusEl, 'Select the appliance or appliances needing service.', 'error');
       return;
     }
-
+    if (!issueType) {
+      setStatus(statusEl, 'Select the issue that best describes the problem.', 'error');
+      return;
+    }
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';
     try {
       const res = await fetch('/api/service-requests', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...serviceAccountData, equipmentIds, issueType })
       });
       const responseData = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(responseData.error || 'Unable to submit service request.');

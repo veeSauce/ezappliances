@@ -546,6 +546,9 @@ input:focus-visible, select:focus-visible {
 .lookup-card > p.lede { text-align: center; margin-bottom: 28px; }
 .service-request-card { max-width: 620px; }
 .form-row textarea { width: 100%; resize: vertical; }
+.service-options { display: grid; gap: 10px; margin-top: 8px; }
+.service-options label { display: flex; align-items: flex-start; gap: 9px; padding: 11px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; }
+.service-options input { margin-top: 4px; }
 
 .divider-or {
   display: flex;

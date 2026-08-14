@@ -20,13 +20,23 @@
 <section class="lookup-page"><div class="container"><div class="lookup-card service-request-card">
   <span class="eyebrow">Service request</span>
   <h1>Report an equipment issue</h1>
-  <p class="lede">Tell us what happened and our service team will follow up. Use your email address, or your phone number with billing ZIP code.</p>
-  <form id="serviceRequestForm" novalidate>
+  <p class="lede">Find your account first, then select the appliance and issue type. Use your email address, or your phone number with billing ZIP code.</p>
+  <form id="serviceAccountForm" novalidate>
     <div class="form-row"><label for="serviceEmail">Email address</label><input type="email" id="serviceEmail" name="email" autocomplete="email"></div>
     <div class="divider-or">OR</div>
     <div class="form-row"><label for="servicePhone">Phone number</label><input type="tel" id="servicePhone" name="phone" autocomplete="tel"></div>
     <div class="form-row"><label for="serviceZip">Billing ZIP code <span class="muted">(required with phone)</span></label><input type="text" id="serviceZip" name="zip" inputmode="numeric" pattern="[0-9]{5}"></div>
-    <div class="form-row"><label for="serviceDescription">What happened?</label><textarea id="serviceDescription" name="description" rows="6" maxlength="2000" required placeholder="Describe the appliance issue, including any error messages or leaks."></textarea></div>
+    <button type="submit" class="btn btn-amber" style="width:100%;">Find my account</button>
+    <p class="form-status" id="serviceAccountStatus" role="status"></p>
+  </form>
+  <form id="serviceRequestForm" novalidate hidden>
+    <div class="form-row"><label>Which appliance has the issue?</label><div id="serviceEquipmentOptions" class="service-options"></div></div>
+    <div class="form-row"><label>What is the issue?</label><div class="service-options">
+      <label><input type="radio" name="issueType" value="not_powering_on" required> Machine is not powering on</label>
+      <label><input type="radio" name="issueType" value="working_incorrectly"> Machine is working incorrectly</label>
+      <label><input type="radio" name="issueType" value="error_code"> Machine is showing an error code</label>
+      <label><input type="radio" name="issueType" value="other"> Other</label>
+    </div></div>
     <button type="submit" class="btn btn-amber" style="width:100%;">Submit service request</button>
     <p class="form-status" id="serviceRequestStatus" role="status"></p>
   </form>
