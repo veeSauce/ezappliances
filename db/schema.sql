@@ -80,3 +80,9 @@ CREATE TABLE service_requests (
 );
 
 CREATE INDEX idx_service_requests_user ON service_requests (user_id, created_at DESC);
+
+CREATE TABLE service_request_equipment (
+    service_request_id INTEGER NOT NULL REFERENCES service_requests(id) ON DELETE CASCADE,
+    equipment_id INTEGER NOT NULL REFERENCES equipment(id) ON DELETE RESTRICT,
+    PRIMARY KEY (service_request_id, equipment_id)
+);
