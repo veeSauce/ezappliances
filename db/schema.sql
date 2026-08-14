@@ -68,3 +68,15 @@ CREATE TABLE rental_agreements (
 -- Create tactical database indexes for Admin Page querying optimization
 CREATE INDEX idx_users_search ON users (name, address, phone_number);
 CREATE INDEX idx_agreements_user ON rental_agreements (user_id);
+
+-- 5. SERVICE REQUESTS (Customer-reported appliance problems)
+CREATE TABLE service_requests (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    description TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'reported' CHECK(status IN ('reported', 'in_progress', 'resolved')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_service_requests_user ON service_requests (user_id, created_at DESC);

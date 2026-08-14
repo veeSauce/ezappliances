@@ -208,6 +208,50 @@ if (lookupForm) {
   });
 }
 
+const serviceRequestForm = document.getElementById('serviceRequestForm');
+if (serviceRequestForm) {
+  serviceRequestForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const statusEl = document.getElementById('serviceRequestStatus');
+    const submitBtn = serviceRequestForm.querySelector('button[type="submit"]');
+    const data = sanitizePayload(Object.fromEntries(new FormData(serviceRequestForm).entries()));
+
+    if (!data.email && !data.phone) {
+      setStatus(statusEl, 'Enter an email address, or a phone number with billing ZIP code.', 'error');
+      return;
+    }
+    if (data.email && !validateEmail(data.email)) {
+      setStatus(statusEl, 'Please enter a valid email address.', 'error');
+      return;
+    }
+    if (!data.email && (!validatePhone(data.phone) || !/^[0-9]{5}$/.test(data.zip || ''))) {
+      setStatus(statusEl, 'Enter a valid phone number and 5-digit billing ZIP code.', 'error');
+      return;
+    }
+    if (!data.description || data.description.length < 5) {
+      setStatus(statusEl, 'Please provide a short description of the equipment issue.', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+    try {
+      const res = await fetch('/api/service-requests', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+      });
+      const responseData = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(responseData.error || 'Unable to submit service request.');
+      serviceRequestForm.reset();
+      setStatus(statusEl, 'Your service request has been submitted. Our team will follow up shortly.', 'success');
+    } catch (err) {
+      setStatus(statusEl, err.message || 'Unable to submit service request. Please call us instead.', 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit service request';
+    }
+  });
+}
+
 const ADMIN_TOKEN_KEY = 'adminToken';
 
 function getAdminToken() {

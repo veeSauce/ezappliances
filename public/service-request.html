@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Request Service — EZ Appliances</title>
+<meta name="description" content="Report an appliance problem to EZ Appliances.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<header class="site-header"><div class="container header-bar">
+  <a href="/" class="logo">EZ<span>·</span>Appliances</a>
+  <ul class="nav-links"><li><a href="/#booking">Order Now</a></li><li><a href="/#how">How It Works</a></li><li><a href="/pay-bill.html">Pay My Bill</a></li></ul>
+  <div class="nav-actions"><a href="tel:2144940713" class="nav-phone">(214) 494-0713</a><a href="/#booking" class="btn btn-primary">Order Now</a></div>
+  <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" id="navToggle"><span></span><span></span><span></span></button>
+</div></header>
+
+<section class="lookup-page"><div class="container"><div class="lookup-card service-request-card">
+  <span class="eyebrow">Service request</span>
+  <h1>Report an equipment issue</h1>
+  <p class="lede">Tell us what happened and our service team will follow up. Use your email address, or your phone number with billing ZIP code.</p>
+  <form id="serviceRequestForm" novalidate>
+    <div class="form-row"><label for="serviceEmail">Email address</label><input type="email" id="serviceEmail" name="email" autocomplete="email"></div>
+    <div class="divider-or">OR</div>
+    <div class="form-row"><label for="servicePhone">Phone number</label><input type="tel" id="servicePhone" name="phone" autocomplete="tel"></div>
+    <div class="form-row"><label for="serviceZip">Billing ZIP code <span class="muted">(required with phone)</span></label><input type="text" id="serviceZip" name="zip" inputmode="numeric" pattern="[0-9]{5}"></div>
+    <div class="form-row"><label for="serviceDescription">What happened?</label><textarea id="serviceDescription" name="description" rows="6" maxlength="2000" required placeholder="Describe the appliance issue, including any error messages or leaks."></textarea></div>
+    <button type="submit" class="btn btn-amber" style="width:100%;">Submit service request</button>
+    <p class="form-status" id="serviceRequestStatus" role="status"></p>
+  </form>
+</div></div></section>
+
+<footer class="site-footer"><div class="container"><div class="footer-grid">
+  <div class="footer-brand"><a href="/" class="logo">EZ·Appliances</a><p>Washer and dryer rentals for Austin. Delivered, installed, and serviced for one monthly rate.</p></div>
+  <div class="footer-col"><h4>Company</h4><ul><li><a href="/#how">How It Works</a></li><li><a href="/#booking">Order Now</a></li><li><a href="/pay-bill.html">Pay My Bill</a></li><li><a href="/service-request.html">Request Service</a></li></ul></div>
+  <div class="footer-col"><h4>Contact</h4><ul><li><a href="tel:2144940713">(214) 494-0713</a></li><li><a href="mailto:inquiry@ezappliancesupport.com">inquiry@ezappliancesupport.com</a></li><li>5900 Balcones Drive<br>Ste 100<br>Austin, TX 78731</li></ul></div>
+</div><div class="footer-bottom"><span>© 2026 EZ Appliances. All rights reserved.</span><span>Austin, TX</span></div></div></footer>
+<script src="/js/main.js"></script>
+</body>
+</html>

@@ -544,6 +544,8 @@ input:focus-visible, select:focus-visible {
 .lookup-card .eyebrow { justify-content: center; }
 .lookup-card h1 { font-size: 1.9rem; text-align: center; }
 .lookup-card > p.lede { text-align: center; margin-bottom: 28px; }
+.service-request-card { max-width: 620px; }
+.form-row textarea { width: 100%; resize: vertical; }
 
 .divider-or {
   display: flex;
