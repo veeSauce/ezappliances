@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 const express = require('express');
-const nodemailer = require('nodemailer');
 const pool = require('../db/pool');
 const requireAdmin = require('../middleware/requireAdmin');
 const appLogs = require('../lib/appLogs');
+const { sendEmail } = require('../lib/mailer');
 const { hashPassword, hashToken, verifyPassword } = require('../lib/adminAuth');
 
 const router = express.Router();
@@ -100,19 +100,6 @@ function validAdminIdentifier(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || /^[A-Za-z0-9\s'\-.]{2,}$/.test(value);
 }
 
-function passwordResetMailer() {
-    const port = Number(process.env.SMTP_PORT || 587);
-    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASSWORD || !process.env.SMTP_FROM) {
-        throw new Error('SMTP is not configured.');
-    }
-    return nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port,
-        secure: process.env.SMTP_SECURE === 'true' || port === 465,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
-    });
-}
-
 router.post('/api/admin/request-password-reset', express.json(), async (req, res) => {
     const identifier = typeof req.body?.identifier === 'string' ? req.body.identifier.trim() : '';
     const genericResponse = { success: true, message: 'If the account is eligible, a reset code has been sent.' };
@@ -154,8 +141,7 @@ router.post('/api/admin/request-password-reset', express.json(), async (req, res
         }
 
         try {
-            await passwordResetMailer().sendMail({
-                from: process.env.SMTP_FROM,
+            await sendEmail({
                 to: process.env.PASSWORD_RESET_RECIPIENT || 'inquiry@ezappliancesupport.com',
                 subject: 'EZ Appliances admin password reset code',
                 text: `A password reset was requested for admin account ${admin.username}.\n\nYour one-time code is: ${code}\n\nIt expires in 15 minutes. If you did not request this, you can ignore this email.`

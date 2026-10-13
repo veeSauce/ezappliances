@@ -82,6 +82,9 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
                 monthly_rate_cents: String(paymentAmount),
                 zip,
                 phone: user.phone_number || phone || ''
+            },
+            payment_intent_data: {
+                metadata: { user_id: user.id }
             }
         });
 
