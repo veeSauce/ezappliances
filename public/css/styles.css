@@ -50,6 +50,37 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.service-area-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 20px;
+  background: var(--amber);
+  color: var(--steel-dark);
+  font-family: var(--font-mono);
+  font-size: clamp(0.72rem, 2.5vw, 0.86rem);
+  letter-spacing: 0.13em;
+  text-align: center;
+  text-transform: uppercase;
+  animation: service-area-arrival 700ms cubic-bezier(.2, .9, .25, 1) both;
+}
+
+.service-area-banner__marker {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 4px rgba(35, 44, 48, 0.14);
+}
+
+@keyframes service-area-arrival {
+  from { opacity: 0; transform: translateY(-100%); }
+  65% { opacity: 1; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 img { max-width: 100%; display: block; }
 
 a { color: inherit; }
