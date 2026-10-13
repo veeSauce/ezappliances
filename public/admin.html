@@ -10,7 +10,10 @@
   <main class="admin-shell">
     <div class="admin-topbar">
       <div><span class="eyebrow">Admin dashboard</span><h1>Operations</h1></div>
-      <button id="adminLogoutButton" class="btn btn-outline" type="button">Log out</button>
+      <div class="admin-actions">
+        <a class="btn btn-outline" href="/admin-reset-password.html">Reset password</a>
+        <button id="adminLogoutButton" class="btn btn-outline" type="button">Log out</button>
+      </div>
     </div>
     <div class="admin-tabs" role="tablist" aria-label="Dashboard views">
       <button class="admin-tab active" type="button" data-admin-view="customers" role="tab" aria-selected="true">Customers</button>

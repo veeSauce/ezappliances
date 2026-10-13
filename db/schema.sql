@@ -31,6 +31,19 @@ CREATE TABLE admin_sessions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE admin_password_reset_codes (
+    id SERIAL PRIMARY KEY,
+    admin_user_id INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_admin_password_reset_codes_active
+    ON admin_password_reset_codes (admin_user_id, expires_at)
+    WHERE used_at IS NULL;
+
 -- 3. EQUIPMENT TABLE (Tracks physical appliances)
 CREATE TABLE equipment (
     id SERIAL PRIMARY KEY,

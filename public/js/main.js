@@ -386,6 +386,70 @@ if (adminLoginForm) {
   });
 }
 
+const adminPasswordRequestForm = document.getElementById('adminPasswordRequestForm');
+if (adminPasswordRequestForm) {
+  adminPasswordRequestForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const statusEl = document.getElementById('adminPasswordRequestStatus');
+    const submitBtn = adminPasswordRequestForm.querySelector('button[type="submit"]');
+    const identifier = String(new FormData(adminPasswordRequestForm).get('identifier') || '').trim();
+    if (!identifier) {
+      setAuthStatus(statusEl, 'Enter your username or email.', 'error');
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+    try {
+      const res = await fetch('/api/admin/request-password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to request a reset code.');
+      setAuthStatus(statusEl, data.message, 'success');
+    } catch (err) {
+      setAuthStatus(statusEl, err.message || 'Unable to request a reset code.', 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Email reset code';
+    }
+  });
+}
+
+const adminPasswordResetForm = document.getElementById('adminPasswordResetForm');
+if (adminPasswordResetForm) {
+  adminPasswordResetForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const statusEl = document.getElementById('adminPasswordResetStatus');
+    const submitBtn = adminPasswordResetForm.querySelector('button[type="submit"]');
+    const values = Object.fromEntries(new FormData(adminPasswordResetForm).entries());
+    const code = String(values.code || '').trim();
+    const newPassword = String(values.newPassword || '');
+    if (!code || newPassword.length < 12 || newPassword !== String(values.confirmPassword || '')) {
+      setAuthStatus(statusEl, 'Enter the code and matching new passwords of at least 12 characters.', 'error');
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Resetting...';
+    try {
+      const res = await fetch('/api/admin/reset-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, newPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to reset password.');
+      clearAdminSession();
+      setAuthStatus(statusEl, 'Password reset. Redirecting to sign in...', 'success');
+      setTimeout(() => { window.location.href = '/admin-login.html'; }, 1000);
+    } catch (err) {
+      setAuthStatus(statusEl, err.message || 'Unable to reset password.', 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Reset password';
+    }
+  });
+}
+
 const adminCustomersTableBody = document.getElementById('adminCustomersTableBody');
 const adminInventoryTableBody = document.getElementById('adminInventoryTableBody');
 const adminStatus = document.getElementById('adminStatus');
