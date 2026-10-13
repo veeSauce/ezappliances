@@ -11,6 +11,22 @@ function formatAmount(amount, currency) {
     }).format(Number(amount || 0) / 100);
 }
 
+function paymentEmailTemplate({ title, message, actionLabel, actionUrl }) {
+    return `<!doctype html>
+<html lang="en"><body style="margin:0;padding:0;background:#eef0ee;font-family:Arial,sans-serif;color:#1b2320;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;background:#eef0ee;"><tr><td align="center">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:580px;background:#fbfcfb;border:1px solid #d7dcda;border-radius:8px;overflow:hidden;">
+      <tr><td style="padding:14px 28px;background:#e2932e;color:#232c30;font-family:monospace;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;">EZ · Appliances</td></tr>
+      <tr><td style="padding:32px 28px 12px;"><p style="margin:0 0 10px;color:#46565f;font-family:monospace;font-size:12px;letter-spacing:1.4px;text-transform:uppercase;">Payment update</p><h1 style="margin:0;font-size:29px;line-height:1.15;color:#1b2320;">${title}</h1></td></tr>
+      <tr><td style="padding:12px 28px 28px;"><p style="margin:0 0 24px;font-size:16px;line-height:1.6;color:#4b5652;">${message}</p>
+        <a href="${actionUrl}" style="display:inline-block;padding:13px 19px;background:#e2932e;border-radius:6px;color:#232c30;font-weight:700;text-decoration:none;">${actionLabel}</a>
+      </td></tr>
+      <tr><td style="padding:20px 28px;border-top:1px solid #d7dcda;background:#eef0ee;color:#4b5652;font-size:14px;line-height:1.6;">Need help? Call <a href="tel:2144940713" style="color:#1b2320;font-weight:700;">(214) 494-0713</a> or visit <a href="${process.env.APP_URL || 'https://www.ezappliancestx.com'}" style="color:#1b2320;font-weight:700;">EZ Appliances</a>.</td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+}
+
 async function findPaymentEmail(client, paymentIntent) {
     if (paymentIntent.receipt_email) return paymentIntent.receipt_email;
     const userId = paymentIntent.metadata?.user_id;
@@ -19,7 +35,7 @@ async function findPaymentEmail(client, paymentIntent) {
     return user.rows[0]?.email || null;
 }
 
-async function sendPaymentNotification(client, { paymentIntent, checkoutSessionId = null, eventId, type, email, subject, text, receiptUrl = null }) {
+async function sendPaymentNotification(client, { paymentIntent, checkoutSessionId = null, eventId, type, email, subject, text, html = null, receiptUrl = null }) {
     const delivery = await client.query(`
         INSERT INTO stripe_payment_notifications
             (payment_intent_id, notification_type, checkout_session_id, stripe_event_id, customer_email, receipt_url)
@@ -31,7 +47,7 @@ async function sendPaymentNotification(client, { paymentIntent, checkoutSessionI
         console.log(`ℹ️ ${type} email already sent for payment ${paymentIntent.id}; skipping duplicate webhook delivery.`);
         return;
     }
-    await sendEmail({ to: email, subject, text });
+    await sendEmail({ to: email, subject, text, html: html || undefined });
     await client.query(
         'UPDATE stripe_payment_notifications SET sent_at = NOW() WHERE payment_intent_id = $1 AND notification_type = $2',
         [paymentIntent.id, type]
@@ -140,10 +156,26 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (reques
                 const receiptUrl = charge && typeof charge === 'object' ? charge.receipt_url : null;
                 const amount = formatAmount(session.amount_total, session.currency);
                 const receiptLine = receiptUrl ? `\n\nView your Stripe receipt: ${receiptUrl}` : '';
+                const applianceSummary = session.metadata?.appliance_summary || 'appliance rental';
+                const billingMonth = session.metadata?.billing_month || new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(new Date());
+                const userId = session.metadata?.user_id;
+                if (userId) {
+                    await client.query(`
+                        INSERT INTO customer_payment_history (payment_intent_id, user_id, amount_cents, currency, receipt_url)
+                        VALUES ($1, $2, $3, $4, $5)
+                        ON CONFLICT (payment_intent_id) DO UPDATE SET receipt_url = EXCLUDED.receipt_url
+                    `, [paymentIntent.id, userId, session.amount_total || 0, session.currency || 'usd', receiptUrl]);
+                }
                 await sendPaymentNotification(client, {
                     paymentIntent, checkoutSessionId: session.id, eventId: event.id, type: 'receipt', email: customerEmail,
                     subject: `Your EZ Appliances payment receipt (${amount})`,
-                    text: `Thank you for your payment to EZ Appliances.\n\nPayment received: ${amount}${receiptLine}\n\nPayment reference: ${paymentIntent.id}`,
+                    text: `Thank you for your payment to EZ Appliances.\n\nPayment received: ${amount}\nBilled for: ${applianceSummary}\nBilling month: ${billingMonth}${receiptLine}\n\nPayment reference: ${paymentIntent.id}`,
+                    html: paymentEmailTemplate({
+                        title: 'Thank you for your payment',
+                        message: `We received your EZ Appliances payment of <strong>${amount}</strong> for your <strong>${applianceSummary}</strong> rental for <strong>${billingMonth}</strong>.`,
+                        actionLabel: receiptUrl ? 'View Stripe receipt' : 'Visit EZ Appliances',
+                        actionUrl: receiptUrl || (process.env.APP_URL || 'https://www.ezappliancestx.com')
+                    }),
                     receiptUrl
                 });
                 console.log(`✅ Sent payment receipt ${paymentIntent.id} to ${customerEmail}`);
@@ -158,10 +190,18 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (reques
                     break;
                 }
                 const amount = formatAmount(paymentIntent.amount, paymentIntent.currency);
+                const siteUrl = process.env.APP_URL || 'https://www.ezappliancestx.com';
+                const paymentPageUrl = `${siteUrl}/pay-bill.html`;
                 await sendPaymentNotification(client, {
                     paymentIntent, eventId: event.id, type: 'failure', email: customerEmail,
                     subject: 'Your EZ Appliances payment was not completed',
-                    text: `We were unable to complete your EZ Appliances payment of ${amount}. No payment was collected.\n\nPlease return to the payment page and try again, or contact us if you need help.\n\nPayment reference: ${paymentIntent.id}`
+                    text: `We were unable to complete your EZ Appliances payment of ${amount}. No payment was collected.\n\nTry again: ${paymentPageUrl}\nNeed help? Call EZ Appliances at (214) 494-0713.\n\nPayment reference: ${paymentIntent.id}`,
+                    html: paymentEmailTemplate({
+                        title: 'Your payment was not completed',
+                        message: `We were unable to complete your EZ Appliances payment of <strong>${amount}</strong>. No payment was collected. You can try again using the secure payment page below.`,
+                        actionLabel: 'Try payment again',
+                        actionUrl: paymentPageUrl
+                    })
                 });
                 console.log(`⚠️ Sent payment failure notice for ${paymentIntent.id} to ${customerEmail}`);
                 break;

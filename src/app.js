@@ -4,6 +4,7 @@ const webhookRoutes = require('./routes/webhook');
 const orderRoutes = require('./routes/orders');
 const accountRoutes = require('./routes/account');
 const adminRoutes = require('./routes/admin');
+const customerPortalRoutes = require('./routes/customerPortal');
 
 const app = express();
 
@@ -19,5 +20,6 @@ app.use(webhookRoutes);
 app.use(orderRoutes);
 app.use(accountRoutes);
 app.use(adminRoutes);
+app.use(customerPortalRoutes);
 
 module.exports = app;

@@ -49,6 +49,20 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
         }
 
         const user = result.rows[0];
+        const appliances = await pool.query(`
+            SELECT e.type
+            FROM rental_agreements ra
+            INNER JOIN equipment e ON e.id = ra.equipment_id
+            WHERE ra.user_id = $1 AND ra.unassigned_at IS NULL
+            ORDER BY e.type
+        `, [user.id]);
+        const applianceNames = {
+            washer: 'washer', dryer: 'dryer', washer_dryer_pair: 'washer and dryer set', stacked_dryer: 'stacked unit'
+        };
+        const applianceSummary = appliances.rows.length
+            ? appliances.rows.map((item) => applianceNames[item.type] || 'appliance').join(', ')
+            : 'appliance rental';
+        const billingMonth = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'America/Chicago' }).format(new Date());
         // The customer billing record is the sole source of truth for charges.
         // Never accept an amount from the browser for a payment session.
         const paymentAmount = Math.round(Number(user.monthly_rate) * 100);
@@ -81,7 +95,9 @@ router.post('/api/account/lookup', express.json(), async (req, res) => {
                 user_id: user.id,
                 monthly_rate_cents: String(paymentAmount),
                 zip,
-                phone: user.phone_number || phone || ''
+                phone: user.phone_number || phone || '',
+                appliance_summary: applianceSummary,
+                billing_month: billingMonth
             },
             payment_intent_data: {
                 metadata: { user_id: user.id }

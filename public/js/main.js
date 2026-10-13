@@ -293,6 +293,7 @@ if (serviceRequestForm) {
 }
 
 const ADMIN_TOKEN_KEY = 'adminToken';
+const CUSTOMER_TOKEN_KEY = 'customerToken';
 
 function getAdminToken() {
   return localStorage.getItem(ADMIN_TOKEN_KEY) || '';
@@ -300,6 +301,14 @@ function getAdminToken() {
 
 function clearAdminSession() {
   localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+function getCustomerToken() {
+  return localStorage.getItem(CUSTOMER_TOKEN_KEY) || '';
+}
+
+function clearCustomerSession() {
+  localStorage.removeItem(CUSTOMER_TOKEN_KEY);
 }
 
 function redirectToAdminLogin(message) {
@@ -382,6 +391,37 @@ if (adminLoginForm) {
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Log in';
+    }
+  });
+}
+
+const customerLoginForm = document.getElementById('customerLoginForm');
+if (customerLoginForm) {
+  if (getCustomerToken()) window.location.href = '/customer-dashboard.html';
+  customerLoginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const statusEl = document.getElementById('customerLoginStatus');
+    const button = customerLoginForm.querySelector('button[type="submit"]');
+    const values = Object.fromEntries(new FormData(customerLoginForm).entries());
+    const email = String(values.email || '').trim();
+    const zip = String(values.zip || '').replace(/\D/g, '');
+    if (!validateEmail(email) || !/^\d{5}$/.test(zip)) {
+      setAuthStatus(statusEl, 'Enter your email address and 5-digit billing ZIP code.', 'error');
+      return;
+    }
+    button.disabled = true;
+    button.textContent = 'Signing in...';
+    try {
+      const res = await fetch('/api/customer/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, zip }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to verify that customer account.');
+      localStorage.setItem(CUSTOMER_TOKEN_KEY, data.token);
+      window.location.href = '/customer-dashboard.html';
+    } catch (err) {
+      setAuthStatus(statusEl, err.message || 'Unable to sign in right now.', 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = 'View dashboard';
     }
   });
 }
@@ -822,5 +862,61 @@ if (adminLogoutButton) {
       clearAdminSession();
       setTimeout(() => redirectToAdminLogin(message), 1200);
     }
+  });
+}
+
+async function customerPortalFetch(path, options = {}) {
+  const res = await fetch(path, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getCustomerToken()}`, ...(options.headers || {}) }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Request failed.');
+  return data;
+}
+
+function applianceTableRows(appliances, includeUnassignedDate = false) {
+  if (!appliances.length) return '<tr><td colspan="4" class="muted">None</td></tr>';
+  return appliances.map((item) => `<tr><td>${escapeHtml(formatApplianceType(item.type))}</td><td>${escapeHtml(item.model_name || '—')}</td><td>${escapeHtml(item.serial_number || '—')}</td><td>${includeUnassignedDate ? formatDate(item.unassigned_at) : escapeHtml(item.installation_status || '—')}</td></tr>`).join('');
+}
+
+async function loadCustomerDashboard() {
+  const content = document.getElementById('customerDashboardContent');
+  const statusEl = document.getElementById('customerDashboardStatus');
+  if (!getCustomerToken()) {
+    window.location.href = '/customer-login.html';
+    return;
+  }
+  try {
+    const data = await customerPortalFetch('/api/customer/dashboard');
+    const { customer, payments, subscriptions, activeAppliances, previousAppliances } = data;
+    content.innerHTML = `
+      <section class="customer-card"><span class="eyebrow">Account details</span><h2>${escapeHtml(customer.name || 'Customer')}</h2>
+        <div class="customer-meta"><div><strong>Email</strong>${escapeHtml(customer.email || '—')}</div><div><strong>Phone</strong>${escapeHtml(customer.phone_number || '—')}</div><div><strong>Address</strong>${escapeHtml(customer.address || '—')}</div><div><strong>Monthly rate</strong>${formatMoney(customer.monthly_rate)}</div></div>
+      </section>
+      <section><h2>Current appliances</h2><div class="admin-table-wrap"><table><thead><tr><th>Type</th><th>Model</th><th>Serial number</th><th>Installation status</th></tr></thead><tbody>${applianceTableRows(activeAppliances)}</tbody></table></div></section>
+      <section><h2>Previous appliances</h2><div class="admin-table-wrap"><table><thead><tr><th>Type</th><th>Model</th><th>Serial number</th><th>Unassigned</th></tr></thead><tbody>${applianceTableRows(previousAppliances, true)}</tbody></table></div></section>
+      <section><h2>Payment history</h2><div class="admin-table-wrap"><table><thead><tr><th>Date</th><th>Amount</th><th>Payment reference</th><th>Receipt</th></tr></thead><tbody>${payments.length ? payments.map((payment) => `<tr><td>${formatDate(payment.paid_at)}</td><td>${formatMoney(Number(payment.amount_cents || 0) / 100)}</td><td>${escapeHtml(payment.payment_intent_id)}</td><td>${payment.receipt_url ? `<a href="${escapeHtml(payment.receipt_url)}" target="_blank" rel="noopener">View receipt</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="4" class="muted">No payments have been recorded yet.</td></tr>'}</tbody></table></div></section>
+      <section><h2>Billing status</h2><div class="admin-table-wrap"><table><thead><tr><th>Status</th><th>Current period starts</th><th>Current period ends</th></tr></thead><tbody>${subscriptions.length ? subscriptions.map((subscription) => `<tr><td>${escapeHtml(subscription.status || '—')}</td><td>${formatDate(subscription.current_period_start)}</td><td>${formatDate(subscription.current_period_end)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted">No recurring billing record found.</td></tr>'}</tbody></table></div></section>`;
+  } catch (err) {
+    if (/session|expired|invalid|authorization/i.test(err.message || '')) {
+      clearCustomerSession();
+      window.location.href = '/customer-login.html';
+      return;
+    }
+    setAuthStatus(statusEl, err.message || 'Unable to load your dashboard.', 'error');
+    content.innerHTML = '<p class="muted">Unable to load your account.</p>';
+  }
+}
+
+const customerDashboardContent = document.getElementById('customerDashboardContent');
+if (customerDashboardContent) loadCustomerDashboard();
+
+const customerLogoutButton = document.getElementById('customerLogoutButton');
+if (customerLogoutButton) {
+  customerLogoutButton.addEventListener('click', async () => {
+    try { await customerPortalFetch('/api/customer/logout', { method: 'POST' }); } catch (_) { /* Clear local session either way. */ }
+    clearCustomerSession();
+    window.location.href = '/customer-login.html';
   });
 }

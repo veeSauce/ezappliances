@@ -34,6 +34,14 @@ CREATE TABLE admin_sessions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE customer_sessions (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE admin_password_reset_codes (
     id SERIAL PRIMARY KEY,
     admin_user_id INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
@@ -57,6 +65,15 @@ CREATE TABLE stripe_payment_notifications (
     sent_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (payment_intent_id, notification_type)
+);
+
+CREATE TABLE customer_payment_history (
+    payment_intent_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    amount_cents INTEGER NOT NULL,
+    currency TEXT NOT NULL,
+    receipt_url TEXT,
+    paid_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 3. EQUIPMENT TABLE (Tracks physical appliances)
