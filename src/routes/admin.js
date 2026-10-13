@@ -3,6 +3,7 @@ const express = require('express');
 const nodemailer = require('nodemailer');
 const pool = require('../db/pool');
 const requireAdmin = require('../middleware/requireAdmin');
+const appLogs = require('../lib/appLogs');
 const { hashPassword, hashToken, verifyPassword } = require('../lib/adminAuth');
 
 const router = express.Router();
@@ -251,6 +252,97 @@ router.post('/api/admin/change-password', requireAdmin, express.json(), async (r
         return res.status(500).json({ success: false, error: 'Unable to update password.' });
     } finally {
         client.release();
+    }
+});
+
+/**
+ * GET /api/admin/logs/stream
+ * Streams recent in-memory application logs to an authenticated admin browser.
+ */
+router.get('/api/admin/logs/stream', requireAdmin, (req, res) => {
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no'
+    });
+    res.write(`event: logs\ndata: ${JSON.stringify(appLogs.recent(200))}\n\n`);
+
+    let lastId = 0;
+    const sendUpdates = () => {
+        const latest = appLogs.recent(200).filter((entry) => entry.id > lastId);
+        if (latest.length) {
+            lastId = latest[latest.length - 1].id;
+            res.write(`event: logs\ndata: ${JSON.stringify(latest)}\n\n`);
+        } else {
+            res.write(': keepalive\n\n');
+        }
+    };
+    const initial = appLogs.recent(200);
+    if (initial.length) lastId = initial[initial.length - 1].id;
+    const timer = setInterval(sendUpdates, 1500);
+    req.on('close', () => clearInterval(timer));
+});
+
+/**
+ * GET /api/admin/metrics?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * Provides operational summaries. Past-due balances are estimated from the
+ * recorded monthly rate because the database does not store invoice balances.
+ */
+router.get('/api/admin/metrics', requireAdmin, async (req, res) => {
+    const from = typeof req.query.from === 'string' ? req.query.from : null;
+    const to = typeof req.query.to === 'string' ? req.query.to : null;
+    const isDate = (value) => !value || /^\d{4}-\d{2}-\d{2}$/.test(value);
+    if (!isDate(from) || !isDate(to) || (from && to && from > to)) {
+        return res.status(400).json({ success: false, error: 'Use valid from/to dates in YYYY-MM-DD format.' });
+    }
+
+    try {
+        const [requests, activeCustomers, pendingCustomers, equipment, pastDue] = await Promise.all([
+            pool.query(`
+                SELECT COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE requested_appliance_type = 'washer')::int AS washer,
+                       COUNT(*) FILTER (WHERE requested_appliance_type = 'dryer')::int AS dryer,
+                       COUNT(*) FILTER (WHERE requested_appliance_type = 'washer_dryer_pair')::int AS washer_dryer_pair,
+                       COUNT(*) FILTER (WHERE requested_appliance_type = 'stacked_dryer')::int AS stacked_dryer
+                FROM users
+                WHERE role = 'customer'
+                  AND COALESCE(order_requested_at, created_at) >= COALESCE($1::date, '-infinity'::date)
+                  AND COALESCE(order_requested_at, created_at) < COALESCE($2::date + INTERVAL '1 day', 'infinity'::timestamp)
+            `, [from, to]),
+            pool.query(`SELECT COUNT(*)::int AS count FROM users u WHERE u.role = 'customer'
+                AND EXISTS (SELECT 1 FROM rental_agreements ra WHERE ra.user_id = u.id AND ra.unassigned_at IS NULL)`),
+            pool.query(`SELECT COUNT(*)::int AS count FROM users u WHERE u.role = 'customer'
+                AND NOT EXISTS (SELECT 1 FROM rental_agreements ra WHERE ra.user_id = u.id)`),
+            pool.query(`SELECT status, COUNT(*)::int AS count FROM equipment GROUP BY status ORDER BY status`),
+            pool.query(`
+                SELECT u.id, u.name, u.email, u.phone_number, u.monthly_rate
+                FROM users u
+                WHERE u.role = 'customer'
+                  AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = u.id AND s.status = 'past_due')
+                ORDER BY u.name
+            `)
+        ]);
+        const pastDueCustomers = pastDue.rows.map((customer) => ({
+            ...customer,
+            estimated_outstanding_balance: Number(customer.monthly_rate || 0)
+        }));
+        return res.json({
+            success: true,
+            filters: { from, to },
+            requestCounts: requests.rows[0],
+            activeCustomerCount: activeCustomers.rows[0].count,
+            pendingCustomerCount: pendingCustomers.rows[0].count,
+            equipmentByStatus: equipment.rows,
+            pastDue: {
+                count: pastDueCustomers.length,
+                estimatedOutstandingBalance: pastDueCustomers.reduce((total, customer) => total + customer.estimated_outstanding_balance, 0),
+                customers: pastDueCustomers
+            }
+        });
+    } catch (err) {
+        console.error('❌ Admin metrics query failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to load admin metrics.' });
     }
 });
 

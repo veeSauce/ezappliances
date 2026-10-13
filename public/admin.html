@@ -19,6 +19,8 @@
       <button class="admin-tab active" type="button" data-admin-view="customers" role="tab" aria-selected="true">Existing customers</button>
       <button class="admin-tab" type="button" data-admin-view="new-customers" role="tab" aria-selected="false">New customers</button>
       <button class="admin-tab" type="button" data-admin-view="inventory" role="tab" aria-selected="false">Inventory</button>
+      <button class="admin-tab" type="button" data-admin-view="metrics" role="tab" aria-selected="false">Metrics</button>
+      <button class="admin-tab" type="button" data-admin-view="logs" role="tab" aria-selected="false">Logs</button>
     </div>
     <div id="sessionWarning" class="session-warning" role="alert" aria-live="polite"></div>
     <p class="form-status" id="adminStatus" role="status"></p>
@@ -56,6 +58,28 @@
         <thead><tr><th>Type</th><th>Model</th><th>Serial number</th><th>Status</th><th>Assigned to</th></tr></thead>
         <tbody id="adminInventoryTableBody"><tr><td colspan="5" class="muted">Choose Inventory to load appliances.</td></tr></tbody>
       </table></div>
+    </section>
+
+    <section id="metricsView" class="admin-view" role="tabpanel" hidden>
+      <h2>Operations metrics</h2>
+      <form id="metricsFilterForm" class="assignment-fields">
+        <label>Requests from<input name="from" type="date"></label>
+        <label>Requests through<input name="to" type="date"></label>
+        <div class="assignment-actions"><button class="btn btn-outline" type="submit">Apply filters</button></div>
+      </form>
+      <p class="muted">The date range applies to equipment requests. Past-due balances are estimated from each customer’s current monthly rate; invoice balances are not stored locally.</p>
+      <div id="adminMetricsContent" class="metrics-grid"><p class="muted">Choose Metrics to load data.</p></div>
+      <h3>Past-due accounts</h3>
+      <div class="admin-table-wrap"><table>
+        <thead><tr><th>Customer</th><th>Email</th><th>Phone</th><th>Estimated outstanding</th></tr></thead>
+        <tbody id="adminPastDueTableBody"><tr><td colspan="4" class="muted">Choose Metrics to load accounts.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section id="logsView" class="admin-view" role="tabpanel" hidden>
+      <h2>Application logs</h2>
+      <p class="muted">Live logs from this running application instance. Logs are kept in memory and are cleared whenever the server restarts.</p>
+      <pre id="adminLogOutput" class="log-output" aria-live="polite">Choose Logs to connect.</pre>
     </section>
   </main>
   <script src="/js/main.js"></script>

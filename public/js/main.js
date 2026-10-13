@@ -453,8 +453,12 @@ if (adminPasswordResetForm) {
 const adminCustomersTableBody = document.getElementById('adminCustomersTableBody');
 const adminNewCustomersTableBody = document.getElementById('adminNewCustomersTableBody');
 const adminInventoryTableBody = document.getElementById('adminInventoryTableBody');
+const adminMetricsContent = document.getElementById('adminMetricsContent');
+const adminPastDueTableBody = document.getElementById('adminPastDueTableBody');
+const adminLogOutput = document.getElementById('adminLogOutput');
 const adminStatus = document.getElementById('adminStatus');
 const adminLogoutButton = document.getElementById('adminLogoutButton');
+let logStreamController = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({
@@ -557,23 +561,111 @@ async function loadInventory() {
   }
 }
 
+function metricCard(label, value) {
+  return `<article class="metric-card"><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></article>`;
+}
+
+async function loadMetrics() {
+  const form = document.getElementById('metricsFilterForm');
+  const values = Object.fromEntries(new FormData(form).entries());
+  const params = new URLSearchParams();
+  if (values.from) params.set('from', values.from);
+  if (values.to) params.set('to', values.to);
+  try {
+    const data = await adminFetch(`/api/admin/metrics?${params.toString()}`);
+    const requests = data.requestCounts;
+    adminMetricsContent.innerHTML = [
+      metricCard('Equipment requests', requests.total),
+      metricCard('Active customers', data.activeCustomerCount),
+      metricCard('Pending new customers', data.pendingCustomerCount),
+      metricCard('Past-due customers', data.pastDue.count),
+      metricCard('Estimated outstanding', formatMoney(data.pastDue.estimatedOutstandingBalance)),
+      metricCard('Washer requests', requests.washer),
+      metricCard('Dryer requests', requests.dryer),
+      metricCard('Washer + dryer requests', requests.washer_dryer_pair),
+      metricCard('Stacked-unit requests', requests.stacked_dryer),
+      ...data.equipmentByStatus.map((item) => metricCard(`Equipment: ${item.status}`, item.count))
+    ].join('');
+    adminPastDueTableBody.innerHTML = data.pastDue.customers.length ? data.pastDue.customers.map((customer) => `
+      <tr><td><a href="/admin-customer.html?id=${encodeURIComponent(customer.id)}">${escapeHtml(customer.name || '—')}</a></td>
+      <td>${escapeHtml(customer.email || '—')}</td><td>${escapeHtml(customer.phone_number || '—')}</td>
+      <td>${formatMoney(customer.estimated_outstanding_balance)}</td></tr>`).join('') :
+      '<tr><td colspan="4" class="muted">No past-due subscriptions found.</td></tr>';
+  } catch (err) {
+    handleAdminError(err);
+    adminMetricsContent.innerHTML = '<p class="muted">Unable to load metrics.</p>';
+    adminPastDueTableBody.innerHTML = '<tr><td colspan="4" class="muted">Unable to load past-due accounts.</td></tr>';
+  }
+}
+
+function stopLogStream() {
+  if (logStreamController) logStreamController.abort();
+  logStreamController = null;
+}
+
+async function streamLogs() {
+  if (!adminLogOutput || logStreamController) return;
+  logStreamController = new AbortController();
+  adminLogOutput.textContent = 'Connecting to application logs…\n';
+  try {
+    const response = await fetch('/api/admin/logs/stream', {
+      headers: { Authorization: `Bearer ${getAdminToken()}` }, signal: logStreamController.signal
+    });
+    if (!response.ok || !response.body) throw new Error('Unable to connect to application logs.');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let firstBatch = true;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split('\n\n');
+      buffer = events.pop();
+      events.forEach((event) => {
+        const line = event.split('\n').find((item) => item.startsWith('data: '));
+        if (!line) return;
+        try {
+          const entries = JSON.parse(line.slice(6));
+          const output = entries.map((entry) => `[${entry.timestamp}] ${entry.level.toUpperCase()}: ${entry.message}`).join('\n');
+          adminLogOutput.textContent = firstBatch ? `${output}\n` : `${adminLogOutput.textContent}${output}\n`;
+          firstBatch = false;
+          adminLogOutput.scrollTop = adminLogOutput.scrollHeight;
+        } catch (_) { /* Ignore malformed stream data. */ }
+      });
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') adminLogOutput.textContent += `Unable to stream logs: ${err.message}\n`;
+  } finally {
+    logStreamController = null;
+  }
+}
+
 if (adminCustomersTableBody) {
   const token = getAdminToken();
   if (!token) {
     redirectToAdminLogin('Your session expired. Please log in again.');
   } else {
     loadCustomers();
+    document.getElementById('metricsFilterForm')?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      loadMetrics();
+    });
     document.querySelectorAll('[data-admin-view]').forEach((tab) => tab.addEventListener('click', () => {
       const view = tab.dataset.adminView;
       document.getElementById('customersView').hidden = view !== 'customers';
       document.getElementById('newCustomersView').hidden = view !== 'new-customers';
       document.getElementById('inventoryView').hidden = view !== 'inventory';
+      document.getElementById('metricsView').hidden = view !== 'metrics';
+      document.getElementById('logsView').hidden = view !== 'logs';
       document.querySelectorAll('[data-admin-view]').forEach((item) => {
         const active = item === tab;
         item.classList.toggle('active', active); item.setAttribute('aria-selected', String(active));
       });
       if (view === 'new-customers') loadNewCustomers();
       if (view === 'inventory') loadInventory();
+      if (view === 'metrics') loadMetrics();
+      if (view === 'logs') streamLogs(); else stopLogStream();
     }));
     adminInventoryTableBody.addEventListener('click', (event) => {
       const row = event.target.closest('[data-customer-id]');
