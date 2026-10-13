@@ -277,6 +277,7 @@ router.get('/api/admin/customers', requireAdmin, async (req, res) => {
         LEFT JOIN rental_agreements ra ON u.id = ra.user_id
         LEFT JOIN equipment e ON ra.equipment_id = e.id
         WHERE u.role = 'customer'
+          AND EXISTS (SELECT 1 FROM rental_agreements active_ra WHERE active_ra.user_id = u.id)
     `;
 
     const queryParams = [];
@@ -315,6 +316,34 @@ router.get('/api/admin/customers', requireAdmin, async (req, res) => {
             success: false,
             error: 'Internal Server Error processing administration query request.'
         });
+    }
+});
+
+/**
+ * GET /api/admin/new-customers
+ * Lists pending delivery requests that have not yet been assigned equipment.
+ */
+router.get('/api/admin/new-customers', requireAdmin, async (_req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                u.id AS user_id,
+                u.name,
+                u.email,
+                u.phone_number,
+                u.address,
+                u.requested_appliance_type,
+                u.preferred_delivery_date,
+                COALESCE(u.order_requested_at, u.created_at) AS requested_at
+            FROM users u
+            WHERE u.role = 'customer'
+              AND NOT EXISTS (SELECT 1 FROM rental_agreements ra WHERE ra.user_id = u.id)
+            ORDER BY COALESCE(u.order_requested_at, u.created_at) DESC
+        `);
+        return res.status(200).json({ success: true, count: result.rows.length, customers: result.rows });
+    } catch (err) {
+        console.error('❌ Admin new customer query failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to load new customer requests.' });
     }
 });
 

@@ -451,6 +451,7 @@ if (adminPasswordResetForm) {
 }
 
 const adminCustomersTableBody = document.getElementById('adminCustomersTableBody');
+const adminNewCustomersTableBody = document.getElementById('adminNewCustomersTableBody');
 const adminInventoryTableBody = document.getElementById('adminInventoryTableBody');
 const adminStatus = document.getElementById('adminStatus');
 const adminLogoutButton = document.getElementById('adminLogoutButton');
@@ -467,6 +468,12 @@ function formatDate(value) {
 
 function formatMoney(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
+}
+
+function formatApplianceType(value) {
+  return ({
+    washer: 'Washer only', dryer: 'Dryer only', washer_dryer_pair: 'Washer + dryer set', stacked_dryer: 'Stacked unit'
+  })[value] || value || 'Not specified';
 }
 
 async function adminFetch(path, options = {}) {
@@ -512,6 +519,26 @@ async function loadCustomers() {
   }
 }
 
+async function loadNewCustomers() {
+  try {
+    const data = await adminFetch('/api/admin/new-customers');
+    if (!data.customers?.length) {
+      adminNewCustomersTableBody.innerHTML = '<tr><td colspan="7" class="muted">No new customer requests found.</td></tr>';
+      return;
+    }
+    adminNewCustomersTableBody.innerHTML = data.customers.map((customer) => `
+      <tr>
+        <td><a href="/admin-customer.html?id=${encodeURIComponent(customer.user_id)}">${escapeHtml(customer.name || '—')}</a></td>
+        <td>${escapeHtml(customer.email || '—')}</td><td>${escapeHtml(customer.phone_number || '—')}</td>
+        <td>${escapeHtml(customer.address || '—')}</td><td>${escapeHtml(formatApplianceType(customer.requested_appliance_type))}</td>
+        <td>${formatDate(customer.preferred_delivery_date)}</td><td>${formatDate(customer.requested_at)}</td>
+      </tr>`).join('');
+  } catch (err) {
+    handleAdminError(err);
+    adminNewCustomersTableBody.innerHTML = '<tr><td colspan="7" class="muted">Unable to load new customer requests.</td></tr>';
+  }
+}
+
 async function loadInventory() {
   try {
     const data = await adminFetch('/api/admin/inventory');
@@ -537,14 +564,16 @@ if (adminCustomersTableBody) {
   } else {
     loadCustomers();
     document.querySelectorAll('[data-admin-view]').forEach((tab) => tab.addEventListener('click', () => {
-      const isInventory = tab.dataset.adminView === 'inventory';
-      document.getElementById('customersView').hidden = isInventory;
-      document.getElementById('inventoryView').hidden = !isInventory;
+      const view = tab.dataset.adminView;
+      document.getElementById('customersView').hidden = view !== 'customers';
+      document.getElementById('newCustomersView').hidden = view !== 'new-customers';
+      document.getElementById('inventoryView').hidden = view !== 'inventory';
       document.querySelectorAll('[data-admin-view]').forEach((item) => {
         const active = item === tab;
         item.classList.toggle('active', active); item.setAttribute('aria-selected', String(active));
       });
-      if (isInventory) loadInventory();
+      if (view === 'new-customers') loadNewCustomers();
+      if (view === 'inventory') loadInventory();
     }));
     adminInventoryTableBody.addEventListener('click', (event) => {
       const row = event.target.closest('[data-customer-id]');

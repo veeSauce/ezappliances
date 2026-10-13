@@ -16,17 +16,27 @@
       </div>
     </div>
     <div class="admin-tabs" role="tablist" aria-label="Dashboard views">
-      <button class="admin-tab active" type="button" data-admin-view="customers" role="tab" aria-selected="true">Customers</button>
+      <button class="admin-tab active" type="button" data-admin-view="customers" role="tab" aria-selected="true">Existing customers</button>
+      <button class="admin-tab" type="button" data-admin-view="new-customers" role="tab" aria-selected="false">New customers</button>
       <button class="admin-tab" type="button" data-admin-view="inventory" role="tab" aria-selected="false">Inventory</button>
     </div>
     <div id="sessionWarning" class="session-warning" role="alert" aria-live="polite"></div>
     <p class="form-status" id="adminStatus" role="status"></p>
 
     <section id="customersView" class="admin-view" role="tabpanel">
-      <h2>Customer records</h2>
+      <h2>Existing customers</h2>
       <div class="admin-table-wrap"><table>
         <thead><tr><th>Name</th><th>Address</th><th>Phone</th><th>Units</th><th>Monthly rate</th><th>Installation</th><th>Billing start</th><th>Past due</th></tr></thead>
         <tbody id="adminCustomersTableBody"><tr><td colspan="8" class="muted">Loading customers…</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section id="newCustomersView" class="admin-view" role="tabpanel" hidden>
+      <h2>New customer requests</h2>
+      <p>Requests move to Existing customers once an appliance is assigned.</p>
+      <div class="admin-table-wrap"><table>
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Delivery address</th><th>Appliance type</th><th>Preferred delivery</th><th>Requested</th></tr></thead>
+        <tbody id="adminNewCustomersTableBody"><tr><td colspan="7" class="muted">Choose New customers to load requests.</td></tr></tbody>
       </table></div>
     </section>
 

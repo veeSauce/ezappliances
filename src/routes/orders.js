@@ -22,8 +22,12 @@ router.post('/api/orders', express.json(), async (req, res) => {
     const applianceType = normalizeValue(payload.applianceType || payload.appliance_type || '');
     const deliveryDate = normalizeValue(payload.deliveryDate || payload.delivery_date || '');
 
-    if (!fullName || !phone || !email || !address || !applianceType) {
+    if (!fullName || !phone || !email || !address || !applianceType || !deliveryDate) {
         return res.status(400).json({ success: false, error: 'Missing required fields or invalid values.' });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)) {
+        return res.status(400).json({ success: false, error: 'Choose a valid preferred delivery date.' });
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -36,13 +40,16 @@ router.post('/api/orders', express.json(), async (req, res) => {
 
     try {
         await pool.query(`
-            INSERT INTO users (id, name, email, phone_number, address)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO users (id, name, email, phone_number, address, requested_appliance_type, preferred_delivery_date, order_requested_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
             ON CONFLICT (email) DO UPDATE SET
                 name = EXCLUDED.name,
                 phone_number = EXCLUDED.phone_number,
-                address = EXCLUDED.address
-        `, [email, fullName, email, phone, address]);
+                address = EXCLUDED.address,
+                requested_appliance_type = EXCLUDED.requested_appliance_type,
+                preferred_delivery_date = EXCLUDED.preferred_delivery_date,
+                order_requested_at = NOW()
+        `, [email, fullName, email, phone, address, applianceType, deliveryDate]);
 
         console.log(`ℹ️ New delivery request: ${fullName} (${applianceType}) — preferred date ${deliveryDate || 'unspecified'}`);
 

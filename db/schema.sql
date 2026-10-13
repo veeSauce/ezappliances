@@ -8,6 +8,9 @@ CREATE TABLE users (
     role TEXT DEFAULT 'customer' CHECK(role IN ('customer', 'admin')),
     monthly_rate NUMERIC(10, 2) NOT NULL DEFAULT 0,
     stripe_customer_id TEXT UNIQUE,            -- Linked Stripe customer token
+    requested_appliance_type TEXT,
+    preferred_delivery_date DATE,
+    order_requested_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
