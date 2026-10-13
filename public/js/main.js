@@ -625,6 +625,14 @@ function assignmentForm(assignment) {
   </article>`;
 }
 
+function assignmentHistoryItem(assignment) {
+  return `<article class="assignment-card assignment-history">
+    <h3>${escapeHtml(assignment.type)} · ${escapeHtml(assignment.model_name)} <span class="muted">${escapeHtml(assignment.serial_number)}</span></h3>
+    <p>Assigned: ${formatDate(assignment.created_at)} · Unassigned: ${formatDate(assignment.unassigned_at)}</p>
+    <p>Installation: ${escapeHtml(assignment.installation_status || '—')} · Monthly rate: ${formatMoney(assignment.monthly_rate)}</p>
+  </article>`;
+}
+
 async function loadCustomerDetail() {
   const customerId = new URLSearchParams(window.location.search).get('id');
   if (!customerId || !getAdminToken()) {
@@ -633,12 +641,13 @@ async function loadCustomerDetail() {
   }
   try {
     const data = await adminFetch(`/api/admin/customers/${encodeURIComponent(customerId)}`);
-    const { customer, assignments, availableEquipment } = data;
+    const { customer, assignments, assignmentHistory, availableEquipment } = data;
     customerDetail.innerHTML = `
       <section class="customer-card"><span class="eyebrow">Customer details</span><h1>${escapeHtml(customer.name)}</h1>
         <div class="customer-meta"><div><strong>Email</strong>${escapeHtml(customer.email || '—')}</div><div><strong>Phone</strong>${escapeHtml(customer.phone_number || '—')}</div><div><strong>Address</strong>${escapeHtml(customer.address || '—')}</div><div><strong>Monthly rate</strong>${formatMoney(customer.monthly_rate)}${assignments.length === 2 ? ' + applicable tax' : ''}</div><div><strong>Past due</strong><span class="${customer.past_due ? 'past-due' : ''}">${customer.past_due ? 'Past due' : 'No'}</span></div></div>
       </section>
       <section><h2>Assigned appliances</h2>${assignments.length ? assignments.map(assignmentForm).join('') : '<p class="muted">No appliances assigned.</p>'}</section>
+      <section><h2>Assignment history</h2>${assignmentHistory.length ? assignmentHistory.map(assignmentHistoryItem).join('') : '<p class="muted">No previous appliance assignments.</p>'}</section>
       <section class="customer-card"><h2>Assign appliance</h2>
         ${availableEquipment.length ? `<form id="assignApplianceForm"><div class="assignment-fields">
           <label>Available appliance<select name="equipmentId" required>${availableEquipment.map((unit) => `<option value="${unit.id}">${escapeHtml(unit.type)} · ${escapeHtml(unit.model_name)} (${escapeHtml(unit.serial_number)})</option>`).join('')}</select></label>

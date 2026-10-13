@@ -78,12 +78,14 @@ CREATE TABLE rental_agreements (
     installation_status TEXT DEFAULT 'pending' CHECK(installation_status IN ('pending', 'scheduled', 'completed')),
     installation_date DATE,
     billing_start_date TIMESTAMP WITH TIME ZONE,
+    unassigned_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create tactical database indexes for Admin Page querying optimization
 CREATE INDEX idx_users_search ON users (name, address, phone_number);
 CREATE INDEX idx_agreements_user ON rental_agreements (user_id);
+CREATE UNIQUE INDEX idx_active_agreement_equipment ON rental_agreements (equipment_id) WHERE unassigned_at IS NULL;
 
 -- 5. SERVICE REQUESTS (Customer-reported appliance problems)
 CREATE TABLE service_requests (

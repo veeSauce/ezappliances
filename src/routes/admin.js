@@ -274,10 +274,10 @@ router.get('/api/admin/customers', requireAdmin, async (req, res) => {
             ra.billing_start_date,
             FALSE AS past_due
         FROM users u
-        LEFT JOIN rental_agreements ra ON u.id = ra.user_id
+        LEFT JOIN rental_agreements ra ON u.id = ra.user_id AND ra.unassigned_at IS NULL
         LEFT JOIN equipment e ON ra.equipment_id = e.id
         WHERE u.role = 'customer'
-          AND EXISTS (SELECT 1 FROM rental_agreements active_ra WHERE active_ra.user_id = u.id)
+          AND EXISTS (SELECT 1 FROM rental_agreements prior_ra WHERE prior_ra.user_id = u.id)
     `;
 
     const queryParams = [];
@@ -353,7 +353,7 @@ router.get('/api/admin/inventory', requireAdmin, async (req, res) => {
             SELECT e.id, e.serial_number, e.model_name, e.type, e.status,
                    u.id AS customer_id, u.name AS customer_name
             FROM equipment e
-            LEFT JOIN rental_agreements ra ON ra.equipment_id = e.id
+            LEFT JOIN rental_agreements ra ON ra.equipment_id = e.id AND ra.unassigned_at IS NULL
             LEFT JOIN users u ON u.id = ra.user_id AND u.role = 'customer'
             ORDER BY e.type, e.model_name, e.serial_number
         `);
@@ -401,20 +401,29 @@ router.get('/api/admin/customers/:customerId', requireAdmin, async (req, res) =>
             return res.status(404).json({ success: false, error: 'Customer not found.' });
         }
 
-        const [assignments, availableEquipment] = await Promise.all([
+        const [assignments, assignmentHistory, availableEquipment] = await Promise.all([
             pool.query(`
                 SELECT ra.id, ra.equipment_id, ra.monthly_rate, ra.installation_status, ra.installation_date,
                        ra.billing_start_date, ra.created_at, e.serial_number, e.model_name, e.type
                 FROM rental_agreements ra
                 INNER JOIN equipment e ON e.id = ra.equipment_id
-                WHERE ra.user_id = $1
+                WHERE ra.user_id = $1 AND ra.unassigned_at IS NULL
                 ORDER BY e.type, e.model_name
+            `, [req.params.customerId]),
+            pool.query(`
+                SELECT ra.id, ra.monthly_rate, ra.installation_status, ra.installation_date,
+                       ra.billing_start_date, ra.created_at, ra.unassigned_at,
+                       e.serial_number, e.model_name, e.type
+                FROM rental_agreements ra
+                INNER JOIN equipment e ON e.id = ra.equipment_id
+                WHERE ra.user_id = $1 AND ra.unassigned_at IS NOT NULL
+                ORDER BY ra.unassigned_at DESC
             `, [req.params.customerId]),
             pool.query(`
                 SELECT e.id, e.serial_number, e.model_name, e.type
                 FROM equipment e
                 WHERE NOT EXISTS (
-                    SELECT 1 FROM rental_agreements ra WHERE ra.equipment_id = e.id
+                    SELECT 1 FROM rental_agreements ra WHERE ra.equipment_id = e.id AND ra.unassigned_at IS NULL
                 )
                 ORDER BY e.type, e.model_name, e.serial_number
             `)
@@ -424,6 +433,7 @@ router.get('/api/admin/customers/:customerId', requireAdmin, async (req, res) =>
             success: true,
             customer: customer.rows[0],
             assignments: assignments.rows,
+            assignmentHistory: assignmentHistory.rows,
             availableEquipment: availableEquipment.rows
         });
     } catch (err) {
@@ -445,11 +455,11 @@ router.post('/api/admin/customers/:customerId/assignments', requireAdmin, expres
         await client.query('BEGIN');
         const customer = await client.query('SELECT id FROM users WHERE id = $1 AND role = \'customer\' FOR UPDATE', [req.params.customerId]);
         const equipment = await client.query('SELECT id FROM equipment WHERE id = $1 FOR UPDATE', [equipmentId]);
-        const alreadyAssigned = await client.query('SELECT id FROM rental_agreements WHERE equipment_id = $1', [equipmentId]);
+        const alreadyAssigned = await client.query('SELECT id FROM rental_agreements WHERE equipment_id = $1 AND unassigned_at IS NULL', [equipmentId]);
         if (customer.rows.length === 0) throw new Error('CUSTOMER_NOT_FOUND');
         if (equipment.rows.length === 0) throw new Error('EQUIPMENT_NOT_FOUND');
         if (alreadyAssigned.rows.length > 0) throw new Error('EQUIPMENT_ASSIGNED');
-        const assignedCount = await client.query('SELECT COUNT(*)::int AS count FROM rental_agreements WHERE user_id = $1', [req.params.customerId]);
+        const assignedCount = await client.query('SELECT COUNT(*)::int AS count FROM rental_agreements WHERE user_id = $1 AND unassigned_at IS NULL', [req.params.customerId]);
         if (assignedCount.rows[0].count >= 2) throw new Error('MAXIMUM_ASSIGNMENTS');
         const monthlyRate = assignedCount.rows[0].count === 0 ? 29.99 : 49.99;
 
@@ -486,7 +496,7 @@ router.patch('/api/admin/customers/:customerId/assignments/:assignmentId', requi
         const result = await pool.query(`
             UPDATE rental_agreements
             SET installation_status = $1, installation_date = $2, billing_start_date = $3
-            WHERE id = $4 AND user_id = $5
+            WHERE id = $4 AND user_id = $5 AND unassigned_at IS NULL
         `, [installationStatus, installationDate || null, billingStartDate || null, req.params.assignmentId, req.params.customerId]);
         if (result.rowCount === 0) return res.status(404).json({ success: false, error: 'Assignment not found.' });
         return res.json({ success: true });
@@ -501,11 +511,14 @@ router.delete('/api/admin/customers/:customerId/assignments/:assignmentId', requ
     try {
         await client.query('BEGIN');
         const assignment = await client.query(`
-            DELETE FROM rental_agreements WHERE id = $1 AND user_id = $2 RETURNING equipment_id
+            UPDATE rental_agreements
+            SET unassigned_at = NOW()
+            WHERE id = $1 AND user_id = $2 AND unassigned_at IS NULL
+            RETURNING equipment_id
         `, [req.params.assignmentId, req.params.customerId]);
         if (assignment.rows.length === 0) throw new Error('ASSIGNMENT_NOT_FOUND');
         await client.query("UPDATE equipment SET status = 'available' WHERE id = $1", [assignment.rows[0].equipment_id]);
-        const remaining = await client.query('SELECT COUNT(*)::int AS count FROM rental_agreements WHERE user_id = $1', [req.params.customerId]);
+        const remaining = await client.query('SELECT COUNT(*)::int AS count FROM rental_agreements WHERE user_id = $1 AND unassigned_at IS NULL', [req.params.customerId]);
         const monthlyRate = remaining.rows[0].count === 0 ? 0 : remaining.rows[0].count === 1 ? 29.99 : 49.99;
         await client.query('UPDATE users SET monthly_rate = $1 WHERE id = $2', [monthlyRate, req.params.customerId]);
         await client.query('COMMIT');
