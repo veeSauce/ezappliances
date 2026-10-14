@@ -10,6 +10,7 @@ CREATE TABLE users (
     stripe_customer_id TEXT UNIQUE,            -- Linked Stripe customer token
     requested_appliance_type TEXT,
     preferred_delivery_date DATE,
+    sms_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
     order_requested_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

@@ -439,6 +439,46 @@ router.get('/api/admin/new-customers', requireAdmin, async (_req, res) => {
     }
 });
 
+router.get('/api/admin/service-requests', requireAdmin, async (_req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT sr.id, sr.description, sr.status, sr.created_at, sr.resolved_at,
+                   u.id AS user_id, u.name, u.email, u.phone_number,
+                   COALESCE(STRING_AGG(CONCAT(e.type, ' · ', e.model_name, ' (', e.serial_number, ')'), ' | ' ORDER BY e.type, e.model_name), 'No appliance recorded') AS equipment
+            FROM service_requests sr
+            INNER JOIN users u ON u.id = sr.user_id
+            LEFT JOIN service_request_equipment sre ON sre.service_request_id = sr.id
+            LEFT JOIN equipment e ON e.id = sre.equipment_id
+            GROUP BY sr.id, u.id
+            ORDER BY CASE sr.status WHEN 'reported' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END, sr.created_at DESC
+        `);
+        return res.json({ success: true, requests: result.rows });
+    } catch (err) {
+        console.error('❌ Admin service request query failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to load service requests.' });
+    }
+});
+
+router.patch('/api/admin/service-requests/:requestId', requireAdmin, express.json(), async (req, res) => {
+    const status = typeof req.body?.status === 'string' ? req.body.status : '';
+    if (!['reported', 'in_progress', 'resolved'].includes(status)) {
+        return res.status(400).json({ success: false, error: 'Use a valid service request status.' });
+    }
+    try {
+        const result = await pool.query(`
+            UPDATE service_requests
+            SET status = $1, resolved_at = CASE WHEN $1 = 'resolved' THEN NOW() ELSE NULL END
+            WHERE id = $2
+            RETURNING id, status, resolved_at
+        `, [status, req.params.requestId]);
+        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Service request not found.' });
+        return res.json({ success: true, request: result.rows[0] });
+    } catch (err) {
+        console.error('❌ Admin service request update failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to update service request.' });
+    }
+});
+
 router.get('/api/admin/inventory', requireAdmin, async (req, res) => {
     try {
         const result = await pool.query(`

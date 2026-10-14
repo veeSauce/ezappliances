@@ -586,6 +586,30 @@ async function loadNewCustomers() {
   }
 }
 
+async function loadServiceRequests() {
+  const tableBody = document.getElementById('adminServiceRequestsTableBody');
+  if (!tableBody) return;
+  try {
+    const data = await adminFetch('/api/admin/service-requests');
+    if (!data.requests?.length) {
+      tableBody.innerHTML = '<tr><td colspan="8" class="muted">No service requests found.</td></tr>';
+      return;
+    }
+    tableBody.innerHTML = data.requests.map((request) => `
+      <tr data-service-request-id="${escapeHtml(request.id)}">
+        <td>${formatDate(request.created_at)}</td>
+        <td><a href="/admin-customer.html?id=${encodeURIComponent(request.user_id)}">${escapeHtml(request.name || '—')}</a></td>
+        <td>${escapeHtml(request.email || '—')}<br><span class="muted">${escapeHtml(request.phone_number || '')}</span></td>
+        <td>${escapeHtml(request.equipment)}</td><td>${escapeHtml(request.description)}</td>
+        <td><select name="serviceStatus">${['reported', 'in_progress', 'resolved'].map((status) => `<option value="${status}" ${request.status === status ? 'selected' : ''}>${status.replace('_', ' ')}</option>`).join('')}</select></td>
+        <td>${formatDate(request.resolved_at)}</td><td><button class="btn btn-outline" type="button" data-service-action="save">Save</button></td>
+      </tr>`).join('');
+  } catch (err) {
+    handleAdminError(err);
+    tableBody.innerHTML = '<tr><td colspan="8" class="muted">Unable to load service requests.</td></tr>';
+  }
+}
+
 async function loadInventory() {
   try {
     const data = await adminFetch('/api/admin/inventory');
@@ -739,6 +763,7 @@ if (adminCustomersTableBody) {
       const view = tab.dataset.adminView;
       document.getElementById('customersView').hidden = view !== 'customers';
       document.getElementById('newCustomersView').hidden = view !== 'new-customers';
+      document.getElementById('serviceRequestsView').hidden = view !== 'service-requests';
       document.getElementById('inventoryView').hidden = view !== 'inventory';
       document.getElementById('metricsView').hidden = view !== 'metrics';
       document.getElementById('logsView').hidden = view !== 'logs';
@@ -747,6 +772,7 @@ if (adminCustomersTableBody) {
         item.classList.toggle('active', active); item.setAttribute('aria-selected', String(active));
       });
       if (view === 'new-customers') loadNewCustomers();
+      if (view === 'service-requests') loadServiceRequests();
       if (view === 'inventory') loadInventory();
       if (view === 'metrics') loadMetrics();
       if (view === 'logs') streamLogs(); else stopLogStream();
@@ -754,6 +780,23 @@ if (adminCustomersTableBody) {
     adminInventoryTableBody.addEventListener('click', (event) => {
       const row = event.target.closest('[data-customer-id]');
       if (row) window.location.href = `/admin-customer.html?id=${encodeURIComponent(row.dataset.customerId)}`;
+    });
+    document.getElementById('adminServiceRequestsTableBody')?.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-service-action="save"]');
+      if (!button) return;
+      const row = button.closest('[data-service-request-id]');
+      button.disabled = true;
+      try {
+        await adminFetch(`/api/admin/service-requests/${encodeURIComponent(row.dataset.serviceRequestId)}`, {
+          method: 'PATCH', body: JSON.stringify({ status: row.querySelector('[name="serviceStatus"]').value })
+        });
+        setAuthStatus(adminStatus, 'Service request status updated.', 'success');
+        loadServiceRequests();
+      } catch (err) {
+        handleAdminError(err);
+      } finally {
+        button.disabled = false;
+      }
     });
     adminInventoryTableBody.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') event.target.closest('[data-customer-id]')?.click();

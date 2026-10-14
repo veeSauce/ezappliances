@@ -18,6 +18,7 @@
     <div class="admin-tabs" role="tablist" aria-label="Dashboard views">
       <button class="admin-tab active" type="button" data-admin-view="customers" role="tab" aria-selected="true">Existing customers</button>
       <button class="admin-tab" type="button" data-admin-view="new-customers" role="tab" aria-selected="false">New customers</button>
+      <button class="admin-tab" type="button" data-admin-view="service-requests" role="tab" aria-selected="false">Service requests</button>
       <button class="admin-tab" type="button" data-admin-view="inventory" role="tab" aria-selected="false">Inventory</button>
       <button class="admin-tab" type="button" data-admin-view="metrics" role="tab" aria-selected="false">Metrics</button>
       <button class="admin-tab" type="button" data-admin-view="logs" role="tab" aria-selected="false">Logs</button>
@@ -39,6 +40,15 @@
       <div class="admin-table-wrap"><table>
         <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Delivery address</th><th>Appliance type</th><th>Preferred delivery</th><th>Requested</th></tr></thead>
         <tbody id="adminNewCustomersTableBody"><tr><td colspan="7" class="muted">Choose New customers to load requests.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section id="serviceRequestsView" class="admin-view" role="tabpanel" hidden>
+      <h2>Service requests</h2>
+      <p>Update the request status as it is reviewed and completed.</p>
+      <div class="admin-table-wrap"><table>
+        <thead><tr><th>Submitted</th><th>Customer</th><th>Contact</th><th>Appliance</th><th>Issue</th><th>Status</th><th>Resolved</th><th></th></tr></thead>
+        <tbody id="adminServiceRequestsTableBody"><tr><td colspan="8" class="muted">Choose Service requests to load requests.</td></tr></tbody>
       </table></div>
     </section>
 
