@@ -7,8 +7,46 @@ if (navToggle) {
   });
 }
 
-// Small helper to show a status message under a form
+let toastDismissTimer = null;
+
+function dismissToast() {
+  const toast = document.getElementById('appToast');
+  if (!toast) return;
+  toast.classList.remove('visible');
+  clearTimeout(toastDismissTimer);
+  toastDismissTimer = null;
+}
+
+function showToast(message, kind = 'success') {
+  let toast = document.getElementById('appToast');
+  if (!toast) {
+    toast = document.createElement('button');
+    toast.id = 'appToast';
+    toast.type = 'button';
+    toast.className = 'app-toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    toast.title = 'Click to dismiss';
+    toast.addEventListener('click', dismissToast);
+    document.body.appendChild(toast);
+  }
+  clearTimeout(toastDismissTimer);
+  toast.textContent = message;
+  toast.classList.remove('success', 'error');
+  toast.classList.add('visible', kind);
+  toastDismissTimer = setTimeout(dismissToast, 15_000);
+}
+
+// Errors remain next to their form; successful actions are brief, global toasts.
 function setStatus(el, message, kind) {
+  if (kind === 'success') {
+    if (el) {
+      el.textContent = '';
+      el.classList.remove('visible', 'success', 'error');
+    }
+    showToast(message, kind);
+    return;
+  }
   if (!el) return;
   el.textContent = message;
   el.classList.remove('success', 'error');
@@ -329,6 +367,14 @@ function showSessionWarning(message) {
 }
 
 function setAuthStatus(el, message, kind) {
+  if (kind === 'success') {
+    if (el) {
+      el.textContent = '';
+      el.classList.remove('visible', 'success', 'error');
+    }
+    showToast(message, kind);
+    return;
+  }
   if (!el) return;
   el.textContent = message;
   el.classList.remove('success', 'error');

@@ -530,6 +530,34 @@ input:focus-visible, select:focus-visible {
 .form-status.success { color: var(--green); }
 .form-status.error { color: #B23B3B; }
 
+.app-toast {
+  position: fixed;
+  z-index: 1000;
+  top: 22px;
+  right: 22px;
+  width: min(390px, calc(100vw - 32px));
+  padding: 15px 18px;
+  border: 1px solid #2f765a;
+  border-radius: 8px;
+  background: #e8f5ee;
+  color: #15533b;
+  box-shadow: 0 12px 32px rgba(23, 33, 43, .2);
+  font: 700 .92rem var(--font-body);
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-12px);
+  transition: opacity .2s ease, transform .2s ease;
+}
+.app-toast.visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.app-toast.error { background: #fff0f0; border-color: #b23b3b; color: #8e2929; }
+
+@media (max-width: 700px) {
+  .app-toast { top: 12px; right: 16px; }
+}
+
 /* ==========================================================================
    Testimonials
    ========================================================================== */
