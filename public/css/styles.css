@@ -309,6 +309,17 @@ p { margin: 0 0 1em; color: var(--ink-soft); }
   max-width: 46ch;
 }
 
+.hero-copy .eyebrow {
+  display: inline-flex;
+  width: fit-content;
+  padding: 7px 11px;
+  border-radius: 4px;
+  background: var(--amber);
+  color: var(--steel-dark);
+  font-weight: 600;
+}
+.hero-copy .eyebrow::before { background: var(--steel-dark); }
+
 .hero-actions {
   display: flex;
   gap: 14px;
