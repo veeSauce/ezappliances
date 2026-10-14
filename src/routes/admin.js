@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const pool = require('../db/pool');
 const requireAdmin = require('../middleware/requireAdmin');
 const appLogs = require('../lib/appLogs');
@@ -350,10 +351,23 @@ router.get('/api/admin/customers', requireAdmin, async (req, res) => {
             COALESCE(STRING_AGG(e.type, ', '), 'No Unit Assigned') AS held_units,
             ra.installation_status,
             ra.billing_start_date,
+            CASE WHEN sub.status IN ('active', 'trialing', 'past_due')
+                      AND (sub.current_period_end IS NULL OR sub.current_period_end > NOW())
+                 THEN TRUE ELSE FALSE END AS currently_subscribed,
+            cancellation.status AS cancellation_status,
+            cancellation.scheduled_end_at,
             FALSE AS past_due
         FROM users u
         LEFT JOIN rental_agreements ra ON u.id = ra.user_id AND ra.unassigned_at IS NULL
         LEFT JOIN equipment e ON ra.equipment_id = e.id
+        LEFT JOIN LATERAL (
+            SELECT status, current_period_end FROM subscriptions
+            WHERE user_id = u.id ORDER BY current_period_end DESC NULLS LAST LIMIT 1
+        ) sub ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT status, scheduled_end_at FROM cancellation_requests
+            WHERE user_id = u.id ORDER BY requested_at DESC LIMIT 1
+        ) cancellation ON TRUE
         WHERE u.role = 'customer'
           AND EXISTS (SELECT 1 FROM rental_agreements prior_ra WHERE prior_ra.user_id = u.id)
     `;
@@ -379,7 +393,7 @@ router.get('/api/admin/customers', requireAdmin, async (req, res) => {
         paramCounter++;
     }
 
-    queryText += ` GROUP BY u.id, u.monthly_rate, ra.installation_status, ra.billing_start_date ORDER BY u.name ASC;`;
+    queryText += ` GROUP BY u.id, u.monthly_rate, ra.installation_status, ra.billing_start_date, sub.status, sub.current_period_end, cancellation.status, cancellation.scheduled_end_at ORDER BY u.name ASC;`;
 
     try {
         const result = await pool.query(queryText, queryParams);
@@ -479,7 +493,7 @@ router.get('/api/admin/customers/:customerId', requireAdmin, async (req, res) =>
             return res.status(404).json({ success: false, error: 'Customer not found.' });
         }
 
-        const [assignments, assignmentHistory, availableEquipment] = await Promise.all([
+        const [assignments, assignmentHistory, availableEquipment, subscription, cancellationRequest] = await Promise.all([
             pool.query(`
                 SELECT ra.id, ra.equipment_id, ra.monthly_rate, ra.installation_status, ra.installation_date,
                        ra.billing_start_date, ra.created_at, e.serial_number, e.model_name, e.type
@@ -504,7 +518,11 @@ router.get('/api/admin/customers/:customerId', requireAdmin, async (req, res) =>
                     SELECT 1 FROM rental_agreements ra WHERE ra.equipment_id = e.id AND ra.unassigned_at IS NULL
                 )
                 ORDER BY e.type, e.model_name, e.serial_number
-            `)
+            `),
+            pool.query(`SELECT id, stripe_price_id, status, current_period_start, current_period_end
+                FROM subscriptions WHERE user_id = $1 ORDER BY current_period_end DESC NULLS LAST LIMIT 1`, [req.params.customerId]),
+            pool.query(`SELECT id, status, requested_at, scheduled_end_at
+                FROM cancellation_requests WHERE user_id = $1 ORDER BY requested_at DESC LIMIT 1`, [req.params.customerId])
         ]);
 
         return res.json({
@@ -512,11 +530,70 @@ router.get('/api/admin/customers/:customerId', requireAdmin, async (req, res) =>
             customer: customer.rows[0],
             assignments: assignments.rows,
             assignmentHistory: assignmentHistory.rows,
-            availableEquipment: availableEquipment.rows
+            availableEquipment: availableEquipment.rows,
+            subscription: subscription.rows[0] || null,
+            cancellationRequest: cancellationRequest.rows[0] || null
         });
     } catch (err) {
         console.error('❌ Admin customer detail query failed:', err.message);
         return res.status(500).json({ success: false, error: 'Unable to load customer details.' });
+    }
+});
+
+router.post('/api/admin/customers/:customerId/subscription/cancel', requireAdmin, express.json(), async (req, res) => {
+    try {
+        const request = await pool.query(`SELECT id FROM cancellation_requests
+            WHERE user_id = $1 AND status = 'requested' ORDER BY requested_at DESC LIMIT 1`, [req.params.customerId]);
+        const subscription = await pool.query(`SELECT id FROM subscriptions
+            WHERE user_id = $1 AND status IN ('active', 'trialing', 'past_due')
+            ORDER BY current_period_end DESC NULLS LAST LIMIT 1`, [req.params.customerId]);
+        if (!request.rows[0]) return res.status(409).json({ success: false, error: 'There is no pending cancellation request.' });
+        if (!subscription.rows[0]) return res.status(409).json({ success: false, error: 'This customer has no active subscription to cancel.' });
+
+        const stripeSubscription = await stripe.subscriptions.update(subscription.rows[0].id, { cancel_at_period_end: true });
+        const scheduledEnd = new Date(stripeSubscription.current_period_end * 1000);
+        await pool.query(`UPDATE cancellation_requests
+            SET status = 'pending_cancellation', scheduled_end_at = $1, processed_at = NOW()
+            WHERE id = $2`, [scheduledEnd, request.rows[0].id]);
+        await pool.query('UPDATE subscriptions SET current_period_end = $1 WHERE id = $2', [scheduledEnd, subscription.rows[0].id]);
+        return res.json({ success: true, scheduledEnd });
+    } catch (err) {
+        console.error('❌ Admin subscription cancellation failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to schedule the subscription cancellation.' });
+    }
+});
+
+router.post('/api/admin/customers/:customerId/subscription/reenroll', requireAdmin, express.json(), async (req, res) => {
+    try {
+        const customer = await pool.query('SELECT stripe_customer_id FROM users WHERE id = $1 AND role = \'customer\'', [req.params.customerId]);
+        const latest = await pool.query(`SELECT id, stripe_price_id, status FROM subscriptions
+            WHERE user_id = $1 ORDER BY current_period_end DESC NULLS LAST LIMIT 1`, [req.params.customerId]);
+        if (!customer.rows[0]?.stripe_customer_id || !latest.rows[0]?.stripe_price_id) {
+            return res.status(409).json({ success: false, error: 'A saved Stripe customer and prior subscription price are required to re-enroll this customer.' });
+        }
+
+        const prior = latest.rows[0];
+        let stripeSubscription;
+        if (prior.status !== 'canceled') {
+            stripeSubscription = await stripe.subscriptions.update(prior.id, { cancel_at_period_end: false });
+        } else {
+            stripeSubscription = await stripe.subscriptions.create({
+                customer: customer.rows[0].stripe_customer_id,
+                items: [{ price: prior.stripe_price_id }]
+            });
+        }
+        const startsAt = new Date(stripeSubscription.current_period_start * 1000);
+        const endsAt = new Date(stripeSubscription.current_period_end * 1000);
+        await pool.query(`INSERT INTO subscriptions (id, user_id, stripe_price_id, status, current_period_start, current_period_end)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, current_period_start = EXCLUDED.current_period_start, current_period_end = EXCLUDED.current_period_end`,
+            [stripeSubscription.id, req.params.customerId, prior.stripe_price_id, stripeSubscription.status, startsAt, endsAt]);
+        await pool.query(`UPDATE cancellation_requests SET status = 're_enrolled', resolved_at = NOW(), processed_at = NOW()
+            WHERE user_id = $1 AND status IN ('requested', 'pending_cancellation')`, [req.params.customerId]);
+        return res.json({ success: true, startsAt, endsAt });
+    } catch (err) {
+        console.error('❌ Admin subscription re-enrollment failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to re-enroll this customer. Confirm that Stripe has a valid saved payment method.' });
     }
 });
 

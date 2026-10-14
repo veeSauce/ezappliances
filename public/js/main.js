@@ -499,6 +499,8 @@ const adminLogOutput = document.getElementById('adminLogOutput');
 const adminStatus = document.getElementById('adminStatus');
 const adminLogoutButton = document.getElementById('adminLogoutButton');
 let logStreamController = null;
+let currentMetricView = 'customers';
+let latestMetricsData = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({
@@ -546,12 +548,13 @@ async function loadCustomers() {
   try {
     const data = await adminFetch('/api/admin/customers');
     if (!data.customers?.length) {
-      adminCustomersTableBody.innerHTML = '<tr><td colspan="8" class="muted">No customers found.</td></tr>';
+      adminCustomersTableBody.innerHTML = '<tr><td colspan="9" class="muted">No customers found.</td></tr>';
       return;
     }
     adminCustomersTableBody.innerHTML = data.customers.map((customer) => `
       <tr>
         <td><a href="/admin-customer.html?id=${encodeURIComponent(customer.user_id)}">${escapeHtml(customer.name || '—')}</a></td>
+        <td>${customer.currently_subscribed ? (customer.cancellation_status === 'pending_cancellation' ? `Ending ${formatDate(customer.scheduled_end_at)}` : 'Active') : 'No'}</td>
         <td>${escapeHtml(customer.address || '—')}</td><td>${escapeHtml(customer.phone_number || '—')}</td>
         <td>${escapeHtml(customer.held_units || 'No Unit Assigned')}</td><td>${formatMoney(customer.monthly_rate)}${Number(customer.monthly_rate) === 49.99 ? ' + tax' : ''}</td><td>${escapeHtml(customer.installation_status || '—')}</td>
         <td>${formatDate(customer.billing_start_date)}</td>
@@ -559,7 +562,7 @@ async function loadCustomers() {
       </tr>`).join('');
   } catch (err) {
     handleAdminError(err);
-    adminCustomersTableBody.innerHTML = '<tr><td colspan="8" class="muted">Unable to load customer data.</td></tr>';
+    adminCustomersTableBody.innerHTML = '<tr><td colspan="9" class="muted">Unable to load customer data.</td></tr>';
   }
 }
 
@@ -605,6 +608,49 @@ function metricCard(label, value) {
   return `<article class="metric-card"><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></article>`;
 }
 
+function metricBarChart(title, items, color = 'amber') {
+  const max = Math.max(...items.map((item) => Number(item.value) || 0), 1);
+  return `<section class="metric-chart"><h3>${escapeHtml(title)}</h3><div class="bar-chart">${items.map((item) => {
+    const value = Number(item.value) || 0;
+    return `<div class="bar-row"><span>${escapeHtml(item.label)}</span><div class="bar-track"><div class="bar-fill ${color}" style="width:${(value / max) * 100}%"></div></div><strong>${escapeHtml(value)}</strong></div>`;
+  }).join('')}</div></section>`;
+}
+
+function renderMetrics(data) {
+  if (!adminMetricsContent) return;
+  const requests = data.requestCounts;
+  const billingSection = document.getElementById('customerBillingMetrics');
+  if (currentMetricView === 'customers') {
+    adminMetricsContent.innerHTML = [
+      metricCard('Equipment requests', requests.total),
+      metricCard('Active customers', data.activeCustomerCount),
+      metricCard('Pending new customers', data.pendingCustomerCount),
+      metricCard('Past-due customers', data.pastDue.count),
+      metricCard('Estimated outstanding', formatMoney(data.pastDue.estimatedOutstandingBalance)),
+      metricBarChart('Customer account status', [
+        { label: 'Active customers', value: data.activeCustomerCount },
+        { label: 'Pending requests', value: data.pendingCustomerCount },
+        { label: 'Past due', value: data.pastDue.count }
+      ], 'green')
+    ].join('');
+    billingSection.hidden = false;
+  } else {
+    adminMetricsContent.innerHTML = [
+      metricCard('Washer requests', requests.washer),
+      metricCard('Dryer requests', requests.dryer),
+      metricCard('Washer + dryer requests', requests.washer_dryer_pair),
+      metricCard('Stacked-unit requests', requests.stacked_dryer),
+      ...data.equipmentByStatus.map((item) => metricCard(`Equipment: ${item.status}`, item.count)),
+      metricBarChart('New equipment requests', [
+        { label: 'Washers', value: requests.washer }, { label: 'Dryers', value: requests.dryer },
+        { label: 'Washer + dryer', value: requests.washer_dryer_pair }, { label: 'Stacked units', value: requests.stacked_dryer }
+      ]),
+      metricBarChart('Inventory status', data.equipmentByStatus.map((item) => ({ label: item.status, value: item.count })), 'steel')
+    ].join('');
+    billingSection.hidden = true;
+  }
+}
+
 async function loadMetrics() {
   const form = document.getElementById('metricsFilterForm');
   const values = Object.fromEntries(new FormData(form).entries());
@@ -613,19 +659,8 @@ async function loadMetrics() {
   if (values.to) params.set('to', values.to);
   try {
     const data = await adminFetch(`/api/admin/metrics?${params.toString()}`);
-    const requests = data.requestCounts;
-    adminMetricsContent.innerHTML = [
-      metricCard('Equipment requests', requests.total),
-      metricCard('Active customers', data.activeCustomerCount),
-      metricCard('Pending new customers', data.pendingCustomerCount),
-      metricCard('Past-due customers', data.pastDue.count),
-      metricCard('Estimated outstanding', formatMoney(data.pastDue.estimatedOutstandingBalance)),
-      metricCard('Washer requests', requests.washer),
-      metricCard('Dryer requests', requests.dryer),
-      metricCard('Washer + dryer requests', requests.washer_dryer_pair),
-      metricCard('Stacked-unit requests', requests.stacked_dryer),
-      ...data.equipmentByStatus.map((item) => metricCard(`Equipment: ${item.status}`, item.count))
-    ].join('');
+    latestMetricsData = data;
+    renderMetrics(data);
     adminPastDueTableBody.innerHTML = data.pastDue.customers.length ? data.pastDue.customers.map((customer) => `
       <tr><td><a href="/admin-customer.html?id=${encodeURIComponent(customer.id)}">${escapeHtml(customer.name || '—')}</a></td>
       <td>${escapeHtml(customer.email || '—')}</td><td>${escapeHtml(customer.phone_number || '—')}</td>
@@ -691,6 +726,15 @@ if (adminCustomersTableBody) {
       event.preventDefault();
       loadMetrics();
     });
+    document.querySelectorAll('[data-metric-view]').forEach((tab) => tab.addEventListener('click', () => {
+      currentMetricView = tab.dataset.metricView;
+      document.querySelectorAll('[data-metric-view]').forEach((item) => {
+        const active = item === tab;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-selected', String(active));
+      });
+      if (latestMetricsData) renderMetrics(latestMetricsData);
+    }));
     document.querySelectorAll('[data-admin-view]').forEach((tab) => tab.addEventListener('click', () => {
       const view = tab.dataset.adminView;
       document.getElementById('customersView').hidden = view !== 'customers';
@@ -773,10 +817,20 @@ async function loadCustomerDetail() {
   }
   try {
     const data = await adminFetch(`/api/admin/customers/${encodeURIComponent(customerId)}`);
-    const { customer, assignments, assignmentHistory, availableEquipment } = data;
+    const { customer, assignments, assignmentHistory, availableEquipment, subscription, cancellationRequest } = data;
+    const subscriptionIsCurrent = subscription && ['active', 'trialing', 'past_due'].includes(subscription.status);
+    const subscriptionSummary = subscriptionIsCurrent
+      ? `${subscription.status}${cancellationRequest?.status === 'pending_cancellation' ? ` · ends ${formatDate(cancellationRequest.scheduled_end_at)}` : ` · renews through ${formatDate(subscription.current_period_end)}`}`
+      : 'Not currently subscribed';
+    const subscriptionAction = cancellationRequest?.status === 'requested' && subscriptionIsCurrent
+      ? '<button class="btn btn-outline btn-danger" type="button" data-subscription-action="cancel">Schedule cancellation at period end</button>'
+      : (cancellationRequest?.status === 'pending_cancellation' || !subscriptionIsCurrent)
+        ? '<button class="btn btn-amber" type="button" data-subscription-action="reenroll">Re-enroll customer</button>'
+        : '';
     customerDetail.innerHTML = `
       <section class="customer-card"><span class="eyebrow">Customer details</span><h1>${escapeHtml(customer.name)}</h1>
-        <div class="customer-meta"><div><strong>Email</strong>${escapeHtml(customer.email || '—')}</div><div><strong>Phone</strong>${escapeHtml(customer.phone_number || '—')}</div><div><strong>Address</strong>${escapeHtml(customer.address || '—')}</div><div><strong>Monthly rate</strong>${formatMoney(customer.monthly_rate)}${assignments.length === 2 ? ' + applicable tax' : ''}</div><div><strong>Past due</strong><span class="${customer.past_due ? 'past-due' : ''}">${customer.past_due ? 'Past due' : 'No'}</span></div></div>
+        <div class="customer-meta"><div><strong>Email</strong>${escapeHtml(customer.email || '—')}</div><div><strong>Phone</strong>${escapeHtml(customer.phone_number || '—')}</div><div><strong>Address</strong>${escapeHtml(customer.address || '—')}</div><div><strong>Monthly rate</strong>${formatMoney(customer.monthly_rate)}${assignments.length === 2 ? ' + applicable tax' : ''}</div><div><strong>Subscription</strong>${escapeHtml(subscriptionSummary)}</div></div>
+        ${subscriptionAction ? `<div class="assignment-actions">${subscriptionAction}</div>` : ''}
       </section>
       <section><h2>Assigned appliances</h2>${assignments.length ? assignments.map(assignmentForm).join('') : '<p class="muted">No appliances assigned.</p>'}</section>
       <section><h2>Assignment history</h2>${assignmentHistory.length ? assignmentHistory.map(assignmentHistoryItem).join('') : '<p class="muted">No previous appliance assignments.</p>'}</section>
@@ -800,6 +854,22 @@ async function loadCustomerDetail() {
         setAuthStatus(customerDetailStatus, 'Assignment updated.', 'success');
       } catch (err) { handleAdminError(err, customerDetailStatus); }
     }));
+    customerDetail.querySelector('[data-subscription-action="cancel"]')?.addEventListener('click', async () => {
+      if (!window.confirm('Schedule this subscription to end when the current billing period ends?')) return;
+      try {
+        await adminFetch(`/api/admin/customers/${encodeURIComponent(customerId)}/subscription/cancel`, { method: 'POST' });
+        setAuthStatus(customerDetailStatus, 'Cancellation scheduled for the end of the current billing period.', 'success');
+        loadCustomerDetail();
+      } catch (err) { handleAdminError(err, customerDetailStatus); }
+    });
+    customerDetail.querySelector('[data-subscription-action="reenroll"]')?.addEventListener('click', async () => {
+      if (!window.confirm('Re-enroll this customer? A new billing cycle may begin immediately.')) return;
+      try {
+        await adminFetch(`/api/admin/customers/${encodeURIComponent(customerId)}/subscription/reenroll`, { method: 'POST' });
+        setAuthStatus(customerDetailStatus, 'Customer re-enrolled successfully.', 'success');
+        loadCustomerDetail();
+      } catch (err) { handleAdminError(err, customerDetailStatus); }
+    });
     customerDetail.querySelectorAll('[data-action="unassign"]').forEach((button) => button.addEventListener('click', async () => {
       if (!window.confirm('Unassign this appliance from the customer?')) return;
       try {
@@ -889,15 +959,59 @@ async function loadCustomerDashboard() {
   }
   try {
     const data = await customerPortalFetch('/api/customer/dashboard');
-    const { customer, payments, subscriptions, activeAppliances, previousAppliances } = data;
+    const { customer, payments, subscriptions, activeAppliances, previousAppliances, cancellationRequest } = data;
+    const currentSubscription = subscriptions.find((subscription) => ['active', 'past_due'].includes(subscription.status)) || subscriptions[0];
+    const cancellationPending = ['requested', 'pending_cancellation'].includes(cancellationRequest?.status);
+    const cancellationMessage = cancellationRequest?.status === 'pending_cancellation'
+      ? `Your service is scheduled to end on ${formatDate(cancellationRequest.scheduled_end_at)}. No future renewal will be charged.`
+      : 'Your cancellation request is pending staff review.';
     content.innerHTML = `
       <section class="customer-card"><span class="eyebrow">Account details</span><h2>${escapeHtml(customer.name || 'Customer')}</h2>
         <div class="customer-meta"><div><strong>Email</strong>${escapeHtml(customer.email || '—')}</div><div><strong>Phone</strong>${escapeHtml(customer.phone_number || '—')}</div><div><strong>Address</strong>${escapeHtml(customer.address || '—')}</div><div><strong>Monthly rate</strong>${formatMoney(customer.monthly_rate)}</div></div>
       </section>
-      <section><h2>Current appliances</h2><div class="admin-table-wrap"><table><thead><tr><th>Type</th><th>Model</th><th>Serial number</th><th>Installation status</th></tr></thead><tbody>${applianceTableRows(activeAppliances)}</tbody></table></div></section>
-      <section><h2>Previous appliances</h2><div class="admin-table-wrap"><table><thead><tr><th>Type</th><th>Model</th><th>Serial number</th><th>Unassigned</th></tr></thead><tbody>${applianceTableRows(previousAppliances, true)}</tbody></table></div></section>
-      <section><h2>Payment history</h2><div class="admin-table-wrap"><table><thead><tr><th>Date</th><th>Amount</th><th>Payment reference</th><th>Receipt</th></tr></thead><tbody>${payments.length ? payments.map((payment) => `<tr><td>${formatDate(payment.paid_at)}</td><td>${formatMoney(Number(payment.amount_cents || 0) / 100)}</td><td>${escapeHtml(payment.payment_intent_id)}</td><td>${payment.receipt_url ? `<a href="${escapeHtml(payment.receipt_url)}" target="_blank" rel="noopener">View receipt</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="4" class="muted">No payments have been recorded yet.</td></tr>'}</tbody></table></div></section>
-      <section><h2>Billing status</h2><div class="admin-table-wrap"><table><thead><tr><th>Status</th><th>Current period starts</th><th>Current period ends</th></tr></thead><tbody>${subscriptions.length ? subscriptions.map((subscription) => `<tr><td>${escapeHtml(subscription.status || '—')}</td><td>${formatDate(subscription.current_period_start)}</td><td>${formatDate(subscription.current_period_end)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted">No recurring billing record found.</td></tr>'}</tbody></table></div></section>`;
+      <div class="admin-tabs" role="tablist" aria-label="Customer dashboard views">
+        <button class="admin-tab active" type="button" data-customer-view="current" role="tab" aria-selected="true">Current order</button>
+        <button class="admin-tab" type="button" data-customer-view="previous-orders" role="tab" aria-selected="false">Previous orders</button>
+        <button class="admin-tab" type="button" data-customer-view="billing-history" role="tab" aria-selected="false">Billing history</button>
+      </div>
+      <section data-customer-panel="current" role="tabpanel">
+        <h2>Current order</h2>
+        <div class="customer-meta"><div><strong>Current monthly billing</strong>${formatMoney(customer.monthly_rate)}</div><div><strong>Billing status</strong>${escapeHtml(currentSubscription?.status || 'No current billing record')}</div><div><strong>Billing period</strong>${currentSubscription ? `${formatDate(currentSubscription.current_period_start)} – ${formatDate(currentSubscription.current_period_end)}` : '—'}</div></div>
+        <h3>Current appliances</h3><div class="admin-table-wrap"><table><thead><tr><th>Type</th><th>Model</th><th>Serial number</th><th>Installation status</th></tr></thead><tbody>${applianceTableRows(activeAppliances)}</tbody></table></div>
+        <div class="assignment-actions"><button id="customerCancellationButton" class="btn btn-outline btn-danger" type="button" ${cancellationPending ? 'disabled' : ''}>${cancellationPending ? 'Cancellation requested' : 'Request cancellation'}</button></div>
+        <p id="customerCancellationStatus" class="form-status ${cancellationPending ? 'visible success' : ''}" role="status">${cancellationPending ? cancellationMessage : ''}</p>
+      </section>
+      <section data-customer-panel="previous-orders" role="tabpanel" hidden>
+        <h2>Previous orders</h2><p>Appliances previously assigned to your account.</p><div class="admin-table-wrap"><table><thead><tr><th>Type</th><th>Model</th><th>Serial number</th><th>Unassigned</th></tr></thead><tbody>${applianceTableRows(previousAppliances, true)}</tbody></table></div>
+      </section>
+      <section data-customer-panel="billing-history" role="tabpanel" hidden>
+        <h2>Billing history</h2><div class="admin-table-wrap"><table><thead><tr><th>Date</th><th>Amount</th><th>Payment reference</th><th>Receipt</th></tr></thead><tbody>${payments.length ? payments.map((payment) => `<tr><td>${formatDate(payment.paid_at)}</td><td>${formatMoney(Number(payment.amount_cents || 0) / 100)}</td><td>${escapeHtml(payment.payment_intent_id)}</td><td>${payment.receipt_url ? `<a href="${escapeHtml(payment.receipt_url)}" target="_blank" rel="noopener">View receipt</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="4" class="muted">No payments have been recorded yet.</td></tr>'}</tbody></table></div>
+        <h3>Billing record</h3><div class="admin-table-wrap"><table><thead><tr><th>Status</th><th>Period starts</th><th>Period ends</th></tr></thead><tbody>${subscriptions.length ? subscriptions.map((subscription) => `<tr><td>${escapeHtml(subscription.status || '—')}</td><td>${formatDate(subscription.current_period_start)}</td><td>${formatDate(subscription.current_period_end)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted">No recurring billing record found.</td></tr>'}</tbody></table></div>
+      </section>`;
+
+    content.querySelectorAll('[data-customer-view]').forEach((tab) => tab.addEventListener('click', () => {
+      const view = tab.dataset.customerView;
+      content.querySelectorAll('[data-customer-panel]').forEach((panel) => { panel.hidden = panel.dataset.customerPanel !== view; });
+      content.querySelectorAll('[data-customer-view]').forEach((item) => {
+        const active = item === tab;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-selected', String(active));
+      });
+    }));
+    document.getElementById('customerCancellationButton')?.addEventListener('click', async () => {
+      if (!window.confirm('Request cancellation of your appliance rental? Our team will review your request.')) return;
+      const button = document.getElementById('customerCancellationButton');
+      const cancellationStatus = document.getElementById('customerCancellationStatus');
+      button.disabled = true;
+      try {
+        await customerPortalFetch('/api/customer/cancellation-request', { method: 'POST' });
+        button.textContent = 'Cancellation requested';
+        setAuthStatus(cancellationStatus, 'Your cancellation request is pending staff review.', 'success');
+      } catch (err) {
+        button.disabled = false;
+        setAuthStatus(cancellationStatus, err.message || 'Unable to submit your cancellation request.', 'error');
+      }
+    });
   } catch (err) {
     if (/session|expired|invalid|authorization/i.test(err.message || '')) {
       clearCustomerSession();

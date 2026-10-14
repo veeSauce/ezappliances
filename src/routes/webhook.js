@@ -125,6 +125,9 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (reques
                 console.log(`❌ Subscription explicitly canceled or terminated on Stripe: ${subscription.id}`);
 
                 await client.query('UPDATE subscriptions SET status = $1 WHERE id = $2', ['canceled', subscription.id]);
+                await client.query(`UPDATE cancellation_requests SET status = 'cancelled', resolved_at = NOW()
+                    WHERE user_id = (SELECT user_id FROM subscriptions WHERE id = $1)
+                      AND status = 'pending_cancellation'`, [subscription.id]);
                 break;
             }
 

@@ -46,7 +46,7 @@ router.post('/api/customer/logout', requireCustomer, express.json(), async (req,
 router.get('/api/customer/dashboard', requireCustomer, async (req, res) => {
     try {
         const userId = req.customer.id;
-        const [customer, payments, subscriptions, activeAppliances, previousAppliances] = await Promise.all([
+        const [customer, payments, subscriptions, activeAppliances, previousAppliances, cancellationRequests] = await Promise.all([
             pool.query('SELECT name, email, phone_number, address, monthly_rate FROM users WHERE id = $1', [userId]),
             pool.query(`SELECT payment_intent_id, amount_cents, currency, receipt_url, paid_at
                 FROM customer_payment_history WHERE user_id = $1 ORDER BY paid_at DESC`, [userId]),
@@ -57,7 +57,9 @@ router.get('/api/customer/dashboard', requireCustomer, async (req, res) => {
                 WHERE ra.user_id = $1 AND ra.unassigned_at IS NULL ORDER BY e.type, e.model_name`, [userId]),
             pool.query(`SELECT e.type, e.model_name, e.serial_number, ra.installation_date, ra.billing_start_date, ra.unassigned_at
                 FROM rental_agreements ra INNER JOIN equipment e ON e.id = ra.equipment_id
-                WHERE ra.user_id = $1 AND ra.unassigned_at IS NOT NULL ORDER BY ra.unassigned_at DESC`, [userId])
+                WHERE ra.user_id = $1 AND ra.unassigned_at IS NOT NULL ORDER BY ra.unassigned_at DESC`, [userId]),
+            pool.query(`SELECT id, status, requested_at, scheduled_end_at FROM cancellation_requests
+                WHERE user_id = $1 ORDER BY requested_at DESC LIMIT 1`, [userId])
         ]);
         return res.json({
             success: true,
@@ -65,11 +67,30 @@ router.get('/api/customer/dashboard', requireCustomer, async (req, res) => {
             payments: payments.rows,
             subscriptions: subscriptions.rows,
             activeAppliances: activeAppliances.rows,
-            previousAppliances: previousAppliances.rows
+            previousAppliances: previousAppliances.rows,
+            cancellationRequest: cancellationRequests.rows[0] || null
         });
     } catch (err) {
         console.error('❌ Customer portal dashboard failed:', err.message);
         return res.status(500).json({ success: false, error: 'Unable to load your dashboard.' });
+    }
+});
+
+router.post('/api/customer/cancellation-request', requireCustomer, express.json(), async (req, res) => {
+    try {
+        const request = await pool.query(`
+            INSERT INTO cancellation_requests (user_id)
+            VALUES ($1)
+            ON CONFLICT (user_id) WHERE status = 'requested' DO NOTHING
+            RETURNING id, status, requested_at
+        `, [req.customer.id]);
+        if (request.rows.length === 0) {
+            return res.status(409).json({ success: false, error: 'A cancellation request is already pending.' });
+        }
+        return res.status(201).json({ success: true, request: request.rows[0] });
+    } catch (err) {
+        console.error('❌ Customer cancellation request failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Unable to submit your cancellation request.' });
     }
 });
 

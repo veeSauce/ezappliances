@@ -28,8 +28,8 @@
     <section id="customersView" class="admin-view" role="tabpanel">
       <h2>Existing customers</h2>
       <div class="admin-table-wrap"><table>
-        <thead><tr><th>Name</th><th>Address</th><th>Phone</th><th>Units</th><th>Monthly rate</th><th>Installation</th><th>Billing start</th><th>Past due</th></tr></thead>
-        <tbody id="adminCustomersTableBody"><tr><td colspan="8" class="muted">Loading customers…</td></tr></tbody>
+        <thead><tr><th>Name</th><th>Current</th><th>Address</th><th>Phone</th><th>Units</th><th>Monthly rate</th><th>Installation</th><th>Billing start</th><th>Past due</th></tr></thead>
+        <tbody id="adminCustomersTableBody"><tr><td colspan="9" class="muted">Loading customers…</td></tr></tbody>
       </table></div>
     </section>
 
@@ -68,12 +68,18 @@
         <div class="assignment-actions"><button class="btn btn-outline" type="submit">Apply filters</button></div>
       </form>
       <p class="muted">The date range applies to equipment requests. Past-due balances are estimated from each customer’s current monthly rate; invoice balances are not stored locally.</p>
+      <div class="admin-tabs metric-tabs" role="tablist" aria-label="Metrics groups">
+        <button class="admin-tab active" type="button" data-metric-view="customers" role="tab" aria-selected="true">Customer metrics</button>
+        <button class="admin-tab" type="button" data-metric-view="appliances" role="tab" aria-selected="false">Appliance metrics</button>
+      </div>
       <div id="adminMetricsContent" class="metrics-grid"><p class="muted">Choose Metrics to load data.</p></div>
+      <section id="customerBillingMetrics">
       <h3>Past-due accounts</h3>
       <div class="admin-table-wrap"><table>
         <thead><tr><th>Customer</th><th>Email</th><th>Phone</th><th>Estimated outstanding</th></tr></thead>
         <tbody id="adminPastDueTableBody"><tr><td colspan="4" class="muted">Choose Metrics to load accounts.</td></tr></tbody>
       </table></div>
+      </section>
     </section>
 
     <section id="logsView" class="admin-view" role="tabpanel" hidden>
