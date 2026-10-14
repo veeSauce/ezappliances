@@ -1002,9 +1002,13 @@ async function loadCustomerDashboard() {
   }
   try {
     const data = await customerPortalFetch('/api/customer/dashboard');
-    const { customer, payments, subscriptions, activeAppliances, previousAppliances, cancellationRequest } = data;
-    const currentSubscription = subscriptions.find((subscription) => ['active', 'past_due'].includes(subscription.status)) || subscriptions[0];
+    const { customer, payments, subscriptions, activeAppliances, previousAppliances, cancellationRequest, serviceRequests } = data;
+    const currentSubscription = subscriptions.find((subscription) =>
+      ['active', 'trialing', 'past_due'].includes(subscription.status) &&
+      (!subscription.current_period_end || new Date(subscription.current_period_end) > new Date())
+    ) || null;
     const cancellationPending = ['requested', 'pending_cancellation'].includes(cancellationRequest?.status);
+    const canRequestCancellation = Boolean(currentSubscription) && !cancellationPending;
     const cancellationMessage = cancellationRequest?.status === 'pending_cancellation'
       ? `Your service is scheduled to end on ${formatDate(cancellationRequest.scheduled_end_at)}. No future renewal will be charged.`
       : 'Your cancellation request is pending staff review.';
@@ -1016,12 +1020,13 @@ async function loadCustomerDashboard() {
         <button class="admin-tab active" type="button" data-customer-view="current" role="tab" aria-selected="true">Current order</button>
         <button class="admin-tab" type="button" data-customer-view="previous-orders" role="tab" aria-selected="false">Previous orders</button>
         <button class="admin-tab" type="button" data-customer-view="billing-history" role="tab" aria-selected="false">Billing history</button>
+        <button class="admin-tab" type="button" data-customer-view="service-requests" role="tab" aria-selected="false">Service requests</button>
       </div>
       <section data-customer-panel="current" role="tabpanel">
         <h2>Current order</h2>
         <div class="customer-meta"><div><strong>Current monthly billing</strong>${formatMoney(customer.monthly_rate)}</div><div><strong>Billing status</strong>${escapeHtml(currentSubscription?.status || 'No current billing record')}</div><div><strong>Billing period</strong>${currentSubscription ? `${formatDate(currentSubscription.current_period_start)} – ${formatDate(currentSubscription.current_period_end)}` : '—'}</div></div>
         <h3>Current appliances</h3><div class="admin-table-wrap"><table><thead><tr><th>Type</th><th>Model</th><th>Serial number</th><th>Installation status</th></tr></thead><tbody>${applianceTableRows(activeAppliances)}</tbody></table></div>
-        <div class="assignment-actions"><button id="customerCancellationButton" class="btn btn-outline btn-danger" type="button" ${cancellationPending ? 'disabled' : ''}>${cancellationPending ? 'Cancellation requested' : 'Request cancellation'}</button></div>
+        ${currentSubscription ? `<div class="assignment-actions"><button id="customerCancellationButton" class="btn btn-outline btn-danger" type="button" ${canRequestCancellation ? '' : 'disabled'}>${cancellationPending ? 'Cancellation requested' : 'Request cancellation'}</button></div>` : '<p class="muted">There is no active subscription to cancel.</p>'}
         <p id="customerCancellationStatus" class="form-status ${cancellationPending ? 'visible success' : ''}" role="status">${cancellationPending ? cancellationMessage : ''}</p>
       </section>
       <section data-customer-panel="previous-orders" role="tabpanel" hidden>
@@ -1030,6 +1035,9 @@ async function loadCustomerDashboard() {
       <section data-customer-panel="billing-history" role="tabpanel" hidden>
         <h2>Billing history</h2><div class="admin-table-wrap"><table><thead><tr><th>Date</th><th>Amount</th><th>Payment reference</th><th>Receipt</th></tr></thead><tbody>${payments.length ? payments.map((payment) => `<tr><td>${formatDate(payment.paid_at)}</td><td>${formatMoney(Number(payment.amount_cents || 0) / 100)}</td><td>${escapeHtml(payment.payment_intent_id)}</td><td>${payment.receipt_url ? `<a href="${escapeHtml(payment.receipt_url)}" target="_blank" rel="noopener">View receipt</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="4" class="muted">No payments have been recorded yet.</td></tr>'}</tbody></table></div>
         <h3>Billing record</h3><div class="admin-table-wrap"><table><thead><tr><th>Status</th><th>Period starts</th><th>Period ends</th></tr></thead><tbody>${subscriptions.length ? subscriptions.map((subscription) => `<tr><td>${escapeHtml(subscription.status || '—')}</td><td>${formatDate(subscription.current_period_start)}</td><td>${formatDate(subscription.current_period_end)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted">No recurring billing record found.</td></tr>'}</tbody></table></div>
+      </section>
+      <section data-customer-panel="service-requests" role="tabpanel" hidden>
+        <h2>Service requests</h2><p>Track the status of equipment service requests submitted for your account.</p><div class="admin-table-wrap"><table><thead><tr><th>Submitted</th><th>Appliance</th><th>Issue</th><th>Status</th><th>Resolved</th></tr></thead><tbody>${serviceRequests.length ? serviceRequests.map((request) => `<tr><td>${formatDate(request.created_at)}</td><td>${escapeHtml(request.equipment)}</td><td>${escapeHtml(request.description)}</td><td>${escapeHtml(String(request.status || '').replace('_', ' ') || '—')}</td><td>${formatDate(request.resolved_at)}</td></tr>`).join('') : '<tr><td colspan="5" class="muted">No service requests have been submitted.</td></tr>'}</tbody></table></div>
       </section>`;
 
     content.querySelectorAll('[data-customer-view]').forEach((tab) => tab.addEventListener('click', () => {

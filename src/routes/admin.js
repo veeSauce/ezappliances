@@ -9,6 +9,16 @@ const { hashPassword, hashToken, verifyPassword } = require('../lib/adminAuth');
 
 const router = express.Router();
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[character]));
+}
+
+function serviceStatusLabel(status) {
+    return ({ reported: 'Reported', in_progress: 'In progress', resolved: 'Resolved' })[status] || 'Updated';
+}
+
 /**
  * POST /api/admin/login
  * Validates an admin user against the admin_users table and returns a DB-backed bearer token.
@@ -468,11 +478,33 @@ router.patch('/api/admin/service-requests/:requestId', requireAdmin, express.jso
         const result = await pool.query(`
             UPDATE service_requests
             SET status = $1, resolved_at = CASE WHEN $1 = 'resolved' THEN NOW() ELSE NULL END
-            WHERE id = $2
-            RETURNING id, status, resolved_at
+            WHERE id = $2 AND status IS DISTINCT FROM $1
+            RETURNING id, user_id, description, status, resolved_at
         `, [status, req.params.requestId]);
-        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Service request not found.' });
-        return res.json({ success: true, request: result.rows[0] });
+        if (!result.rows.length) {
+            const existing = await pool.query('SELECT id FROM service_requests WHERE id = $1', [req.params.requestId]);
+            if (!existing.rows.length) return res.status(404).json({ success: false, error: 'Service request not found.' });
+            return res.json({ success: true, unchanged: true, message: 'Service request status was already up to date.' });
+        }
+        const request = result.rows[0];
+        try {
+            const customer = await pool.query('SELECT name, email FROM users WHERE id = $1', [request.user_id]);
+            if (customer.rows[0]?.email) {
+                const name = escapeHtml(customer.rows[0].name || 'Customer');
+                const safeDescription = escapeHtml(request.description);
+                const label = serviceStatusLabel(request.status);
+                const dashboardUrl = `${process.env.APP_URL || 'http://localhost:3000'}/customer-dashboard.html`;
+                await sendEmail({
+                    to: customer.rows[0].email,
+                    subject: `EZ Appliances service request update: ${label}`,
+                    text: `Hi ${customer.rows[0].name || 'Customer'},\n\nYour service request status has been updated to: ${label}.\nIssue: ${request.description}\n\nView your request in your customer dashboard: ${dashboardUrl}\n\nEZ Appliances\n(214) 494-0713`,
+                    html: `<main style="max-width:600px;margin:auto;font-family:Arial,sans-serif;color:#17212b;border:1px solid #e4e7ea;border-radius:10px;overflow:hidden"><header style="background:#17212b;color:#fff;padding:24px"><strong style="font-size:22px">EZ<span style="color:#e5a93e">·</span>Appliances</strong></header><section style="padding:28px"><h1 style="font-size:24px;margin-top:0">Service request update</h1><p>Hi ${name},</p><p>Your service request status is now <strong>${escapeHtml(label)}</strong>.</p><p><strong>Issue:</strong> ${safeDescription}</p><p><a href="${escapeHtml(dashboardUrl)}" style="display:inline-block;background:#e5a93e;color:#17212b;padding:12px 18px;border-radius:6px;font-weight:bold;text-decoration:none">View customer dashboard</a></p><p style="margin-top:28px">Questions? Call <a href="tel:2144940713">(214) 494-0713</a>.</p></section></main>`
+                });
+            }
+        } catch (emailError) {
+            console.error('❌ Service request status email failed:', emailError.message);
+        }
+        return res.json({ success: true, request });
     } catch (err) {
         console.error('❌ Admin service request update failed:', err.message);
         return res.status(500).json({ success: false, error: 'Unable to update service request.' });
